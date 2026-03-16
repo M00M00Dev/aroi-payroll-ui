@@ -1,12 +1,11 @@
-// Version: 2603161315 (UI: Cloud-Ready with Env Variables)
+// Version: 2603162315-FINAL-FIX (UI: Fixed Syntax Error)
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Save, Lock, Unlock, Loader2, User, ChevronLeft, ChevronRight, Activity, Clock, Calendar, AlertTriangle } from 'lucide-react';
 
 const App = () => {
-  const APP_VERSION = "2603161315";
+  const APP_VERSION = "2603162315";
   
-  // This picks up the Render URL from Vercel settings, or defaults to your local port for development
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5005";
+  const API_URL = import.meta.env.VITE_API_URL || "https://aroi-payroll-backend.onrender.com";
 
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -19,7 +18,6 @@ const App = () => {
     setLoading(true);
     setError(null);
     try {
-      // Using the dynamic API_URL variable
       const response = await fetch(`${API_URL}/api/payroll-data?start=${startDate}`);
       if (!response.ok) throw new Error("Connection Failure to Backend");
       const result = await response.json();
@@ -39,7 +37,6 @@ const App = () => {
     if (isSyncing || data.length === 0) return;
     setIsSyncing(true);
     try {
-      // Using the dynamic API_URL variable
       const response = await fetch(`${API_URL}/api/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -76,8 +73,9 @@ const App = () => {
   }, [shiftDate]);
 
   const calculateBreakdown = (emp) => {
-    const weekday = emp.daily.reduce((acc, d, i) => (i % 7 < 5) ? acc + (d.r || 0) : acc, 0);
-    const weekend = emp.daily.reduce((acc, d, i) => (i % 7 >= 5) ? acc + (d.r || 0) : acc, 0);
+    if (!emp?.daily || !Array.isArray(emp.daily)) return { weekday: "0.0", weekend: "0.0", total: "0.0" };
+    const weekday = emp.daily.reduce((acc, d, i) => (i % 7 < 5) ? acc + (Number(d.r) || 0) : acc, 0);
+    const weekend = emp.daily.reduce((acc, d, i) => (i % 7 >= 5) ? acc + (Number(d.r) || 0) : acc, 0);
     return { 
       weekday: weekday.toFixed(1), 
       weekend: weekend.toFixed(1), 
@@ -86,7 +84,9 @@ const App = () => {
   };
 
   const fnRange = useMemo(() => {
-    const [y, m, d] = startDate.split('-').map(Number);
+    const parts = startDate.split('-').map(Number);
+    if (parts.length !== 3) return "Select Date";
+    const [y, m, d] = parts;
     const s = new Date(y, m - 1, d);
     const e = new Date(y, m - 1, d + 13);
     const f = (dt) => `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}`;
@@ -94,7 +94,9 @@ const App = () => {
   }, [startDate]);
 
   const allDates = useMemo(() => {
-    const [y, m, d] = startDate.split('-').map(Number);
+    const parts = startDate.split('-').map(Number);
+    if (parts.length !== 3) return Array(14).fill("—");
+    const [y, m, d] = parts;
     return Array.from({ length: 14 }).map((_, i) => new Date(y, m - 1, d + i).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }));
   }, [startDate]);
 
@@ -149,8 +151,8 @@ const App = () => {
             )}
             <button 
               onClick={handleSave} 
-              disabled={isSyncing} 
-              className={`flex items-center gap-2 px-8 py-2.5 rounded-xl font-black uppercase tracking-tight transition-all shadow-md ${isSyncing ? 'bg-slate-100 text-slate-400 shadow-none' : 'bg-emerald-600 text-white hover:bg-emerald-700 hover:shadow-lg active:scale-95'}`}
+              disabled={isSyncing || loading} 
+              className={`flex items-center gap-2 px-8 py-2.5 rounded-xl font-black uppercase tracking-tight transition-all shadow-md ${isSyncing || loading ? 'bg-slate-100 text-slate-400 shadow-none' : 'bg-emerald-600 text-white hover:bg-emerald-700 hover:shadow-lg active:scale-95'}`}
             >
               {isSyncing ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
               <span>{isSyncing ? 'Saving...' : 'Save'}</span>
@@ -158,7 +160,15 @@ const App = () => {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-200 overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-200 overflow-hidden relative">
+          
+          {loading && (
+            <div className="absolute inset-0 z-[100] bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
+              <Loader2 className="animate-spin text-emerald-600" size={40} />
+              <p className="text-slate-500 font-black uppercase tracking-widest text-[10px]">Fetching Payroll Data...</p>
+            </div>
+          )}
+
           <div className="table-scroll overflow-x-auto overflow-y-auto max-h-[calc(100vh-180px)]">
             <table className="w-full text-left border-collapse table-fixed min-w-[1750px]">
               <thead className="sticky top-0 z-40 bg-slate-900 text-[9px] uppercase tracking-wider font-bold">
@@ -186,7 +196,7 @@ const App = () => {
               </thead>
 
               <tbody className="divide-y divide-slate-100">
-                {!loading && data.map((emp) => {
+                {data.length > 0 ? data.map((emp) => {
                   const b = calculateBreakdown(emp);
                   return (
                     <tr key={emp.id} className="group hover:bg-emerald-50/40 transition-colors divide-x divide-slate-100">
@@ -199,7 +209,7 @@ const App = () => {
                         </div>
                       </td>
                       
-                      {emp.daily?.map((day, idx) => {
+                      {emp.daily ? emp.daily.map((day, idx) => {
                         const isMismatch = Math.abs(day.r - day.s) > 0.1;
                         const isMatch = !isMismatch && day.s > 0;
                         const cellStyle = isMismatch 
@@ -250,7 +260,7 @@ const App = () => {
                             )}
                           </React.Fragment>
                         );
-                      })}
+                      }) : <td colSpan="14">No Daily Data</td>}
 
                       <td className="p-2 text-center bg-slate-50 font-bold text-slate-500">{b.weekday}</td>
                       <td className="p-2 text-center bg-orange-50/40 font-bold text-orange-600">{b.weekend}</td>
@@ -267,7 +277,11 @@ const App = () => {
                       </td>
                     </tr>
                   );
-                })}
+                }) : !loading && (
+                  <tr>
+                    <td colSpan="30" className="p-10 text-center text-slate-400 uppercase font-black">No payroll data found</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
