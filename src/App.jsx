@@ -1,9 +1,13 @@
-// Version: 2603160855 (UI: Hours-Only Total)
+// Version: 2603161315 (UI: Cloud-Ready with Env Variables)
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Save, Lock, Unlock, Loader2, User, ChevronLeft, ChevronRight, Activity, Clock, Calendar, AlertTriangle } from 'lucide-react';
 
 const App = () => {
-  const APP_VERSION = "2603160855";
+  const APP_VERSION = "2603161315";
+  
+  // This picks up the Render URL from Vercel settings, or defaults to your local port for development
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5005";
+
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -15,28 +19,42 @@ const App = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`http://localhost:5005/api/payroll-data?start=${startDate}`);
-      if (!response.ok) throw new Error("Connection Failure");
+      // Using the dynamic API_URL variable
+      const response = await fetch(`${API_URL}/api/payroll-data?start=${startDate}`);
+      if (!response.ok) throw new Error("Connection Failure to Backend");
       const result = await response.json();
       setData(Array.isArray(result) ? result : []);
-    } catch (err) { setError(err.message); } finally { setLoading(false); }
+    } catch (err) { 
+      setError(err.message); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
-  useEffect(() => { fetchData(); }, [startDate]);
+  useEffect(() => { 
+    fetchData(); 
+  }, [startDate]);
 
   const handleSave = async () => {
     if (isSyncing || data.length === 0) return;
     setIsSyncing(true);
     try {
-      const response = await fetch('http://localhost:5005/api/sync', {
+      // Using the dynamic API_URL variable
+      const response = await fetch(`${API_URL}/api/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ data, startDate }) 
       });
       if (response.ok) {
         setLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      } else {
+        throw new Error("Sync Failed");
       }
-    } catch (err) { alert("Network Error."); } finally { setIsSyncing(false); }
+    } catch (err) { 
+      alert("Network Error: Could not reach the server."); 
+    } finally { 
+      setIsSyncing(false); 
+    }
   };
 
   const shiftDate = useCallback((days) => {
@@ -57,14 +75,13 @@ const App = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [shiftDate]);
 
-  // Updated Calculation: Total is now purely Hours (Weekday + Weekend)
   const calculateBreakdown = (emp) => {
     const weekday = emp.daily.reduce((acc, d, i) => (i % 7 < 5) ? acc + (d.r || 0) : acc, 0);
     const weekend = emp.daily.reduce((acc, d, i) => (i % 7 >= 5) ? acc + (d.r || 0) : acc, 0);
     return { 
       weekday: weekday.toFixed(1), 
       weekend: weekend.toFixed(1), 
-      total: (weekday + weekend).toFixed(1) // Removed casual extra from hours total
+      total: (weekday + weekend).toFixed(1)
     };
   };
 
@@ -267,4 +284,5 @@ const App = () => {
     </div>
   );
 };
+
 export default App;
