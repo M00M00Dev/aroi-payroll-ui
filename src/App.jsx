@@ -1,10 +1,11 @@
-// Version: 2603162315-FINAL-FIX (UI: Fixed Syntax Error)
+// Version: 2603252200-FINAL-FIX (UI: Case-Insensitive ID Sync)
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Save, Lock, Unlock, Loader2, User, ChevronLeft, ChevronRight, Activity, Clock, Calendar, AlertTriangle } from 'lucide-react';
 
 const App = () => {
-  const APP_VERSION = "2603162315";
+  const APP_VERSION = "2603252200";
   
+  // Update this to your production URL if needed
   const API_URL = import.meta.env.VITE_API_URL || "https://aroi-payroll-backend.onrender.com";
 
   const [data, setData] = useState([]);
@@ -21,7 +22,14 @@ const App = () => {
       const response = await fetch(`${API_URL}/api/payroll-data?start=${startDate}`);
       if (!response.ok) throw new Error("Connection Failure to Backend");
       const result = await response.json();
-      setData(Array.isArray(result) ? result : []);
+      
+      // We ensure all IDs are uppercase coming in to prevent mapping mismatches
+      const normalizedData = Array.isArray(result) ? result.map(emp => ({
+        ...emp,
+        id: emp.id.toUpperCase()
+      })) : [];
+      
+      setData(normalizedData);
     } catch (err) { 
       setError(err.message); 
     } finally { 
@@ -44,6 +52,7 @@ const App = () => {
       });
       if (response.ok) {
         setLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        alert("Success: Payroll synced to 'MR' tab.");
       } else {
         throw new Error("Sync Failed");
       }
@@ -62,6 +71,7 @@ const App = () => {
     });
   }, []);
 
+  // Hotkeys: J (Prev) / K (Next)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.target.tagName === 'INPUT') return;
@@ -123,6 +133,7 @@ const App = () => {
       `}</style>
 
       <div className="max-w-[1850px] mx-auto">
+        {/* HEADER SECTION */}
         <div className="flex justify-between items-center mb-4 bg-white p-3 rounded-2xl shadow-sm border border-slate-200/60">
           <div className="flex items-center gap-4">
             <div className="bg-emerald-600 p-2.5 rounded-xl text-white shadow-lg shadow-emerald-100">
@@ -160,6 +171,7 @@ const App = () => {
           </div>
         </div>
 
+        {/* TABLE SECTION */}
         <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-200 overflow-hidden relative">
           
           {loading && (
@@ -250,7 +262,7 @@ const App = () => {
                                       const extraIdx = idx === 6 ? 0 : 1;
                                       setData(prev => prev.map(ev => ev.id === emp.id ? {
                                         ...ev, 
-                                        extra: extraIdx === 0 ? [val, ev.extra[1]] : [ev.extra[0], val]
+                                        extra: extraIdx === 0 ? [val, ev.extra[1] || 0] : [ev.extra[0] || 0, val]
                                       } : ev));
                                     }} 
                                     className="w-full bg-white border border-emerald-100 rounded-md py-1.5 text-right pr-2 text-emerald-700 font-black shadow-sm outline-none focus:ring-2 focus:ring-emerald-500" 
