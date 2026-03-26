@@ -1,9 +1,9 @@
-// Version: 260326-FINAL-UI
+// Version: 260327-REPORT-FIX
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Save, Lock, Unlock, Loader2, EyeOff, ChevronLeft, ChevronRight, Activity, Calendar, Target, FileText, X, Download, CheckCircle2 } from 'lucide-react';
 
 const App = () => {
-  const APP_VERSION = "260326-FINAL";
+  const APP_VERSION = "260327-FINAL";
   const API_URL = import.meta.env.VITE_API_URL || "https://aroi-payroll-backend.onrender.com";
 
   const [data, setData] = useState([]);
@@ -45,16 +45,6 @@ const App = () => {
       return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
     });
   }, []);
-
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.target.tagName === 'INPUT') return;
-      if (e.key.toLowerCase() === 'j') shiftDate(-14);
-      if (e.key.toLowerCase() === 'k') shiftDate(14);
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [shiftDate]);
 
   const toggleApprove = (id) => {
     setData(prev => prev.map(emp => {
