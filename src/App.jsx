@@ -1,9 +1,9 @@
-// Version: 260327-FINAL-INTEGRATION
+// Version: 260327-DEBUG-INTEGRATION
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Save, Lock, Unlock, Loader2, EyeOff, ChevronLeft, ChevronRight, Activity, Calendar, Target, FileText, X, Download, CheckCircle2 } from 'lucide-react';
 
 const App = () => {
-  const APP_VERSION = "260327-V1";
+  const APP_VERSION = "260327-DEBUG-V1";
   const API_URL = import.meta.env.VITE_API_URL || "https://aroi-payroll-backend.onrender.com";
 
   // --- STATE ---
@@ -15,7 +15,7 @@ const App = () => {
   const [hiddenStaff, setHiddenStaff] = useState(new Set());
   const [paidStaff, setPaidStaff] = useState(new Set());
 
-  // --- DATE LOGIC ---
+  // --- ACTIONS & DATA FETCHING ---
   const getCurrentAroiMonday = () => {
     const now = new Date();
     const day = now.getDay();
@@ -51,7 +51,7 @@ const App = () => {
     });
   }, []);
 
-  // Keyboard Navigation (J/K)
+  // Keyboard Navigation
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.target.tagName === 'INPUT') return;
@@ -62,7 +62,6 @@ const App = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [shiftDate]);
 
-  // --- ACTIONS ---
   const toggleApprove = (id) => {
     setData(prev => prev.map(emp => {
       if (emp.id === id) {
@@ -87,7 +86,7 @@ const App = () => {
     return Array.from({ length: 14 }).map((_, i) => new Date(parts[0], parts[1] - 1, parts[2] + i).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }));
   }, [startDate]);
 
-  // --- COMPONENTS ---
+  // --- OVERLAYS ---
   const ReportOverlay = () => {
     if (!showReport) return null;
     const shops = ["Maruay Thai", "PAD Thai Food", "Other"];
@@ -100,12 +99,12 @@ const App = () => {
               <h1 className="text-3xl font-black uppercase tracking-tighter">Payment Manifest</h1>
               <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest">{allDates[0]} - {allDates[13]}</p>
             </div>
-            <button onClick={() => setShowReport(false)} className="bg-slate-900 text-white p-3 rounded-2xl hover:bg-slate-800 transition-all shadow-xl"><X size={24}/></button>
+            <button onClick={() => setShowReport(false)} className="bg-slate-900 text-white p-3 rounded-2xl hover:bg-slate-800 shadow-xl"><X size={24}/></button>
           </div>
 
           {shops.map(shop => {
             const filtered = data.filter(e => {
-                if (shop === "Other") return e.shop === "Other" || !e.shop;
+                if (shop === "Other") return e.shop === "Other" || !e.shop || (e.shop !== "Maruay Thai" && e.shop !== "PAD Thai Food");
                 return e.shop === shop;
             });
             if (filtered.length === 0 && shop === "Other") return null;
@@ -116,11 +115,6 @@ const App = () => {
                   <h2 className="text-2xl font-black uppercase text-slate-800 flex items-center gap-3">
                     <div className={`w-2 h-8 ${shop === 'Other' ? 'bg-orange-400' : 'bg-emerald-500'} rounded-full`}/> {shop}
                   </h2>
-                  {shop !== "Other" && (
-                    <button className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-[10px] hover:bg-blue-700 shadow-lg transition-all active:scale-95">
-                      <Download size={16}/> Download {shop} ABA (TFN ONLY)
-                    </button>
-                  )}
                 </div>
 
                 <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
@@ -129,32 +123,22 @@ const App = () => {
                       <tr>
                         <th className="p-4 w-16 text-center">Paid</th>
                         <th className="p-4">Staff Member</th>
-                        <th className="p-4">Pay Type</th>
                         <th className="p-4 text-right">Hrs (Wkdy/Wkend)</th>
-                        <th className="p-4 text-right">Val (Wkdy/Wkend)</th>
-                        <th className="p-4 text-right">Extra/Cash</th>
                         <th className="p-4 text-right bg-slate-100 text-slate-900 font-black">Total Payment</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
                       {filtered.map(emp => {
                         const b = calculateBreakdown(emp);
-                        const wkday$ = b.weekday * (emp.rate_weekday || 0);
-                        const wkend$ = b.weekend * (emp.rate_weekend || 0);
-                        const extra$ = (emp.extra?.[0] || 0) + (emp.extra?.[1] || 0);
-                        const total$ = wkday$ + wkend$ + extra$;
-
+                        const total$ = (b.weekday * (emp.rate_weekday || 0)) + (b.weekend * (emp.rate_weekend || 0)) + ((emp.extra?.[0] || 0) + (emp.extra?.[1] || 0));
                         return (
-                          <tr key={emp.id} className={`hover:bg-slate-50/50 transition-colors ${paidStaff.has(emp.id) ? 'bg-emerald-50/30' : ''}`}>
+                          <tr key={emp.id} className={`hover:bg-slate-50/50 ${paidStaff.has(emp.id) ? 'bg-emerald-50/30' : ''}`}>
                             <td className="p-4 text-center">
                               <button onClick={() => setPaidStaff(prev => { const n = new Set(prev); n.has(emp.id) ? n.delete(emp.id) : n.add(emp.id); return n; })}
-                                  className={`p-1.5 rounded-lg transition-all ${paidStaff.has(emp.id) ? 'text-emerald-600 bg-emerald-100' : 'text-slate-200 bg-slate-50'}`}><CheckCircle2 size={18} /></button>
+                                  className={`p-1.5 rounded-lg ${paidStaff.has(emp.id) ? 'text-emerald-600 bg-emerald-100' : 'text-slate-200 bg-slate-50'}`}><CheckCircle2 size={18} /></button>
                             </td>
-                            <td className="p-4 font-black uppercase text-slate-700 text-[12px]">{emp.name}</td>
-                            <td className="p-4"><span className="px-2 py-1 bg-slate-100 rounded-md font-bold text-[9px] text-slate-500 uppercase">{emp.pay_type}</span></td>
+                            <td className="p-4 font-black uppercase text-slate-700 text-[12px]">{emp.name} <span className="text-[8px] text-slate-300 font-normal">({emp.shop})</span></td>
                             <td className="p-4 text-right font-mono text-slate-500">{b.weekday.toFixed(1)} / {b.weekend.toFixed(1)}</td>
-                            <td className="p-4 text-right font-mono text-slate-500">${wkday$.toFixed(2)} / ${wkend$.toFixed(2)}</td>
-                            <td className="p-4 text-right font-mono font-bold text-orange-600">${extra$.toFixed(2)}</td>
                             <td className="p-4 text-right font-black text-slate-900 text-sm bg-slate-50/50">${total$.toFixed(2)}</td>
                           </tr>
                         );
@@ -181,13 +165,13 @@ const App = () => {
       `}</style>
 
       <div className="max-w-[1900px] mx-auto">
-        {/* TOP BAR */}
+        {/* HEADER */}
         <div className="flex justify-between items-center mb-4 bg-white p-3 rounded-2xl shadow-sm border border-slate-200">
           <div className="flex items-center gap-4">
             <div className="bg-slate-900 p-2.5 rounded-xl text-white"><Activity size={18} /></div>
             <div>
               <h1 className="text-sm font-black tracking-tighter text-slate-900 leading-none uppercase">Aroi Payroll</h1>
-              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1 block">{APP_VERSION}</span>
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1 block tracking-[0.2em]">{APP_VERSION}</span>
             </div>
             <div className="h-8 w-[1px] bg-slate-200 mx-2" />
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
@@ -198,8 +182,8 @@ const App = () => {
               <button onClick={() => shiftDate(14)} className="p-1.5 hover:bg-white rounded-lg transition-all"><ChevronRight size={16}/></button>
             </div>
             <button onClick={() => setStartDate(getCurrentAroiMonday())} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl font-black uppercase text-[9px] hover:bg-slate-50 transition-all text-slate-600 shadow-sm"><Target size={14} className="text-blue-500" /> Today</button>
-            <button onClick={() => setShowReport(true)} className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 rounded-xl font-black uppercase text-[10px] hover:bg-slate-50 transition-all text-slate-700 shadow-sm">
-              <FileText size={14} className="text-indigo-500" /> <span>Report</span>
+            <button onClick={() => setShowReport(true)} className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-black uppercase text-[10px] hover:bg-indigo-700 shadow-lg">
+              <FileText size={14} /> <span>Finance Report</span>
             </button>
           </div>
 
@@ -208,11 +192,11 @@ const App = () => {
             try { await fetch(`${API_URL}/api/sync`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, startDate }) }); }
             finally { setIsSyncing(false); fetchData(); }
           }} disabled={isSyncing} className={`flex items-center gap-2 px-8 py-2.5 rounded-xl font-black uppercase transition-all shadow-md ${isSyncing ? 'bg-slate-100 text-slate-300' : 'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95'}`}>
-            {isSyncing ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} <span>Save Sync</span>
+            {isSyncing ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} <span>{isSyncing ? 'Syncing...' : 'Save Sync'}</span>
           </button>
         </div>
 
-        {/* MAIN DATA GRID */}
+        {/* GRID */}
         <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden relative">
           {loading && (
             <div className="absolute inset-0 z-[100] bg-white/60 backdrop-blur-[2px] flex items-center justify-center">
@@ -240,7 +224,6 @@ const App = () => {
                   <th className="w-24 p-2 text-center bg-slate-950">Lock</th>
                 </tr>
               </thead>
-
               <tbody className="divide-y divide-slate-100">
                 {data.map((emp) => {
                   const b = calculateBreakdown(emp);
@@ -251,22 +234,22 @@ const App = () => {
                         <div className="flex items-center gap-3">
                           {emp.approved ? <div className="text-amber-500 bg-amber-100 p-1.5 rounded-lg"><Lock size={14} fill="currentColor" /></div> : 
                            isHidden ? <button onClick={() => setHiddenStaff(p => { const n = new Set(p); n.delete(emp.id); return n; })} className="w-full text-center py-0.5 text-[8px] font-black text-emerald-600 bg-emerald-50 rounded-md uppercase">Show</button> :
-                           <button onClick={() => setHiddenStaff(p => { const n = new Set(p); n.add(emp.id); return n; })} className="text-slate-300 hover:text-slate-500"><EyeOff size={14}/></button>}
+                           <button onClick={() => setHiddenStaff(p => { const n = new Set(p); n.add(emp.id); return n; })} className="text-slate-300 hover:text-slate-500 transition-colors"><EyeOff size={14}/></button>}
                           {!isHidden && <span className={`font-bold uppercase tracking-tighter truncate text-[11px] ${emp.approved ? 'text-amber-700' : 'text-slate-700'}`}>{emp.name}</span>}
                         </div>
                       </td>
                       {!isHidden ? emp.daily?.map((day, idx) => (
                         <React.Fragment key={idx}>
                           <td className={`p-1 ${idx % 7 >= 5 ? 'bg-orange-50/30' : ''}`}>
-                            <div className={`p-1 rounded-lg border flex flex-col items-center transition-colors ${emp.approved ? 'border-amber-100 bg-amber-50/20' : Math.abs(day.r - day.s) > 0.1 ? 'bg-red-50 border-red-100' : day.s > 0 ? 'bg-emerald-50 border-emerald-100' : 'border-transparent'}`}>
+                            <div className={`p-1 rounded-lg border flex flex-col items-center transition-colors ${emp.approved ? 'border-amber-100' : Math.abs(day.r - day.s) > 0.1 ? 'bg-red-50 border-red-100' : day.s > 0 ? 'bg-emerald-50 border-emerald-100' : 'border-transparent'}`}>
                               <span className={`text-[8px] font-bold mb-0.5 ${emp.approved ? 'text-amber-500' : day.s > 0 ? 'text-emerald-500' : 'text-slate-200'}`}>{day.s > 0 ? day.s.toFixed(1) : '—'}</span>
                               <input type="number" value={day.r || ''} disabled={emp.approved} onChange={(e) => {
                                 const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
                                 setData(p => p.map(ev => ev.id === emp.id ? {...ev, daily: ev.daily.map((d, i) => i === idx ? {...d, r: val} : d)} : ev));
-                              }} className={`w-full text-center text-[11px] font-black rounded font-mono ${emp.approved ? 'bg-transparent text-amber-600 border-none' : 'bg-white border border-slate-200 text-slate-900 shadow-sm'}`} />
+                              }} className={`w-full text-center text-[11px] font-black rounded font-mono ${emp.approved ? 'bg-transparent text-amber-600' : 'bg-white border border-slate-200 text-slate-900 shadow-sm'}`} />
                             </div>
                           </td>
-                          {(idx === 6 || idx === 13) && <td className="p-2"><input type="number" value={emp.extra?.[idx === 6 ? 0 : 1] || ''} disabled={emp.approved} onChange={(e) => {
+                          {(idx === 6 || idx === 13) && <td className="p-2 text-center"><input type="number" value={emp.extra?.[idx === 6 ? 0 : 1] || ''} disabled={emp.approved} onChange={(e) => {
                             const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
                             setData(p => p.map(ev => ev.id === emp.id ? {...ev, extra: idx === 6 ? [val, ev.extra[1]] : [ev.extra[0], val]} : ev));
                           }} className="w-full bg-transparent text-right text-[11px] font-bold font-mono text-emerald-700 outline-none" /></td>}
@@ -286,6 +269,40 @@ const App = () => {
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+
+        {/* SYSTEM TRACE (DEBUG BOX) */}
+        <div className="mt-12 p-6 bg-slate-900 rounded-3xl text-emerald-400 font-mono text-[10px] overflow-x-auto shadow-2xl border border-slate-800">
+          <h3 className="text-white font-black uppercase mb-4 text-xs tracking-widest flex items-center gap-2">
+            <Activity size={14} className="text-emerald-500 animate-pulse" /> System Trace (Raw Matching Data)
+          </h3>
+          <div className="grid grid-cols-2 gap-8">
+            <div>
+              <p className="text-slate-500 mb-2 uppercase border-b border-slate-800 pb-1">Sample Employee Mapping</p>
+              <pre className="text-emerald-500/80">
+                {data.length > 0 ? JSON.stringify({
+                  id: data[0].id,
+                  name: data[0].name,
+                  shop: data[0].shop,
+                  pay_type: data[0].pay_type,
+                  rate_wkday: data[0].rate_weekday,
+                  rate_wkend: data[0].rate_weekend,
+                  bank: data[0].bank_raw
+                }, null, 2) : "No data received from API"}
+              </pre>
+            </div>
+            <div>
+              <p className="text-slate-500 mb-2 uppercase border-b border-slate-800 pb-1">Global Dashboard Stats</p>
+              <pre className="text-indigo-400">
+                {JSON.stringify({
+                  total_staff: data.length,
+                  mapped_to_maruay: data.filter(e => e.shop === "Maruay Thai").length,
+                  mapped_to_pad: data.filter(e => e.shop === "PAD Thai Food").length,
+                  mapped_to_other: data.filter(e => !e.shop || (e.shop !== "Maruay Thai" && e.shop !== "PAD Thai Food")).length,
+                }, null, 2)}
+              </pre>
+            </div>
           </div>
         </div>
       </div>
