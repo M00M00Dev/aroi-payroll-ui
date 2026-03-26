@@ -1,111 +1,142 @@
-# Version: 260327-FINAL-STABLE-BACKEND
-import datetime, os, requests, logging, gc
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
+// Version: 260327-FINAL-STABLE-FRONTEND
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Save, Lock, Unlock, Loader2, EyeOff, ChevronLeft, ChevronRight, Activity, Calendar, Target, FileText, X, Download, CheckCircle2 } from 'lucide-react';
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+const App = () => {
+  const API_URL = "https://aroi-payroll-backend.onrender.com";
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showReport, setShowReport] = useState(false);
+  const [startDate, setStartDate] = useState('2026-03-09');
 
-ID_AROI_TEAM = "1oZ_HXEexnlMaaAdGalWPHdEFVL4HVrR52YfFxXAFMnw"
-ID_STAFF_TRUTH = "1L5ZpNgmFvO7huy8M-m74vI-0Vynba5-XHswSinzdpHk"
-SHEET_NAME = "MR"
-SQUARE_TOKEN = os.environ.get("SQUARE_ACCESS_TOKEN", "EAAAl9bhnOucG_PxaUrqH-RrDbDDSMW7X1HXuzvWEmfMrmRMH8MtPa4vOmLjvTPT")
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/api/payroll-data?start=${startDate}`);
+      const result = await response.json();
+      setData(Array.isArray(result) ? result : []);
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); }
+  };
 
-def get_google_service():
-    token_path = 'token.json'
-    if os.path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, ['https://www.googleapis.com/auth/spreadsheets'])
-        return build('sheets', 'v4', credentials=creds, cache_discovery=False)
-    return None
+  useEffect(() => { fetchData(); }, [startDate]);
 
-def parse_date(s):
-    if not s: return None
-    for fmt in ["%d-%b-%y", "%d-%b-%Y", "%d-%m-%y", "%d-%m-%Y", "%Y-%m-%d"]:
-        try: return datetime.datetime.strptime(str(s).strip(), fmt).date()
-        except: continue
-    return None
+  const calculateBreakdown = (emp) => {
+    if (!emp?.daily) return { weekday: 0, weekend: 0 };
+    const wkday = emp.daily.reduce((acc, d, i) => (i % 7 < 5) ? acc + (Number(d.r) || 0) : acc, 0);
+    const wkend = emp.daily.reduce((acc, d, i) => (i % 7 >= 5) ? acc + (Number(d.r) || 0) : acc, 0);
+    return { weekday: wkday, weekend: wkend };
+  };
 
-def get_reconciliation_data(start_date_str="2026-03-09"):
-    service = get_google_service()
-    if not service: return []
-    
-    dt1 = datetime.datetime.strptime(start_date_str, "%Y-%m-%d").date()
-    dt2 = dt1 + datetime.timedelta(days=7)
-    headers = {"Authorization": f"Bearer {SQUARE_TOKEN}", "Content-Type": "application/json"}
+  const ReportOverlay = () => {
+    if (!showReport) return null;
+    const shops = ["Maruay Thai", "PAD Thai Food", "Other"];
+    return (
+      <div className="fixed inset-0 z-[500] bg-white overflow-y-auto p-8 font-sans">
+        <div className="max-w-5xl mx-auto">
+          <div className="flex justify-between items-center mb-10 border-b pb-6">
+            <h1 className="text-3xl font-black uppercase">Finance Manifest</h1>
+            <button onClick={() => setShowReport(false)} className="bg-slate-900 text-white p-3 rounded-2xl"><X size={24}/></button>
+          </div>
+          {shops.map(shop => {
+            const filtered = data.filter(e => {
+                const s = e.shop?.trim();
+                if (shop === "Other") return !s || (s !== "Maruay Thai" && s !== "PAD Thai Food");
+                return s === shop;
+            });
+            if (filtered.length === 0) return null;
+            return (
+              <div key={shop} className="mb-16">
+                <h2 className="text-xl font-black uppercase mb-4 text-slate-800">{shop}</h2>
+                <div className="border rounded-2xl overflow-hidden shadow-sm">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400">
+                      <tr>
+                        <th className="p-4">Name</th>
+                        <th className="p-4 text-right">Hrs</th>
+                        <th className="p-4 text-right bg-slate-100 text-slate-900">Total Pay</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y text-[12px]">
+                      {filtered.map(emp => {
+                        const b = calculateBreakdown(emp);
+                        const total = (b.weekday * (emp.rate_weekday || 0)) + (b.weekend * (emp.rate_weekend || 0)) + ((emp.extra?.[0] || 0) + (emp.extra?.[1] || 0));
+                        return (
+                          <tr key={emp.id} className="hover:bg-slate-50">
+                            <td className="p-4 font-bold uppercase">{emp.name}</td>
+                            <td className="p-4 text-right font-mono">{(b.weekday + b.weekend).toFixed(1)}</td>
+                            <td className="p-4 text-right font-black bg-slate-50/50">${total.toFixed(2)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
-    # 1. Square Data
-    sq_names = {}
-    actual_hrs = {}
-    try:
-        r1 = requests.post("https://connect.squareup.com/v2/team-members/search", headers=headers, json={}, timeout=15)
-        for m in r1.json().get('team_members', []):
-            sq_names[m['id']] = f"{m.get('given_name','')} {m.get('family_name','')}".strip()
-        
-        end_dt = dt1 + datetime.timedelta(days=14)
-        r2 = requests.post("https://connect.squareup.com/v2/labor/timecards/search", headers=headers, json={"query": {"filter": {"start_at": {"start_at": dt1.strftime("%Y-%m-%dT00:00:00Z"), "end_at": end_dt.strftime("%Y-%m-%dT23:59:59Z")}}}}, timeout=15)
-        for tc in r2.json().get('timecards', []):
-            tid = tc['team_member_id']
-            if tid not in actual_hrs: actual_hrs[tid] = [0.0]*14
-            start = datetime.datetime.fromisoformat(tc['start_at'].replace('Z', '').split('+')[0])
-            off = (start.date() - dt1).days
-            if 0 <= off < 14:
-                dur = (datetime.datetime.fromisoformat(tc['end_at'].replace('Z', '').split('+')[0]) - start).total_seconds() / 3600
-                actual_hrs[tid][off] += dur
-    except: pass
+  return (
+    <div className="min-h-screen bg-[#F1F5F9] p-4 text-[11px] font-sans antialiased">
+      <div className="max-w-[1600px] mx-auto">
+        <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-3xl shadow-sm border">
+          <div className="flex items-center gap-6">
+            <h1 className="font-black uppercase tracking-tighter text-lg">Aroi Payroll</h1>
+            <button onClick={() => setShowReport(true)} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg hover:bg-indigo-700 transition-all">Finance Report</button>
+          </div>
+          <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl font-bold">
+             <button onClick={() => fetchData()} className="px-4 py-2 hover:bg-white rounded-xl transition-all">Refresh Data</button>
+          </div>
+        </div>
 
-    # 2. Staff Truth (Tab 2) - Match by Long ID
-    meta = {}
-    try:
-        res = service.spreadsheets().values().get(spreadsheetId=ID_STAFF_TRUTH, range="'staff'!A2:Q500").execute()
-        for r in res.get('values', []):
-            if len(r) > 0:
-                sid = str(r[0]).strip()
-                meta[sid] = {
-                    "shop": str(r[16]).strip() if len(r) > 16 else "Other",
-                    "rate": float(str(r[10]).replace('$','').replace(',','').strip() or 0),
-                    "rate_we": float(str(r[11]).replace('$','').replace(',','').strip() or 0)
-                }
-    except: pass
-
-    # 3. Roster Data (Tab 1)
-    res = service.spreadsheets().values().get(spreadsheetId=ID_AROI_TEAM, range=f"'{SHEET_NAME}'!A1:P1000").execute()
-    rows = res.get('values', [])
-    staff_final = {}
-    curr_date = None
-    in_fence = False
-    
-    for r in rows:
-        if not r: continue
-        m = str(r[0]).strip()
-        d = parse_date(r[4]) if len(r) > 4 else None
-        if "WEEK" in m.upper() or d:
-            if d: curr_date = d
-            in_fence = True; continue
-        if "END" in m.upper(): in_fence = False; continue
-        
-        # If the ID in Column A is a Square Long ID
-        if in_fence and curr_date in [dt1, dt2] and m in sq_names:
-            if m not in staff_final: staff_final[m] = {"name": sq_names[m], "roster": [0.0]*14, "extra": [0.0, 0.0]}
-            blk = 0 if curr_date == dt1 else 1
-            for i in range(7):
-                if len(r) > 4+i:
-                    try: staff_final[m]["roster"][(blk*7)+i] += float(str(r[4+i]).replace(',','') or 0)
-                    except: pass
-            if len(r) > 13:
-                try: staff_final[m]["extra"][blk] += float(str(r[13]).replace('$','').replace(',','') or 0)
-                except: pass
-
-    output = []
-    for sid, p in staff_final.items():
-        m_data = meta.get(sid, {})
-        output.append({
-            "id": sid, "name": p["name"], "shop": m_data.get("shop", "Other"),
-            "rate_weekday": m_data.get("rate", 0), "rate_weekend": m_data.get("rate_we", 0),
-            "extra": p["extra"], 
-            "daily": [{"r": round(p["roster"][i], 2), "s": round(actual_hrs.get(sid, [0.0]*14)[i], 2)} for i in range(14)]
-        })
-    gc.collect()
-    return output
-
-def update_manager_sheet(payload, start_date_str):
-    return True
+        <div className="bg-white rounded-3xl shadow-xl border overflow-hidden relative min-h-[400px]">
+          {loading ? (
+            <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-50">
+              <Loader2 className="animate-spin text-indigo-600" size={32} />
+            </div>
+          ) : (
+            <div className="overflow-auto">
+              <table className="w-full text-left border-collapse table-fixed min-w-[1200px]">
+                <thead className="bg-slate-900 text-white text-[10px] uppercase font-bold sticky top-0 z-10">
+                  <tr>
+                    <th className="p-4 w-48 sticky left-0 bg-slate-950">Team Member</th>
+                    {Array.from({ length: 14 }).map((_, i) => <th key={i} className="p-2 text-center w-20">Day {i+1}</th>)}
+                    <th className="p-4 w-24 text-right bg-indigo-900">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {data.map(emp => {
+                    const b = calculateBreakdown(emp);
+                    return (
+                      <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-4 sticky left-0 bg-white border-r font-bold uppercase truncate">{emp.name}</td>
+                        {emp.daily?.map((d, i) => (
+                          <td key={i} className="p-1">
+                            <div className="p-1 rounded-lg border text-center">
+                              <span className="text-[8px] text-emerald-600 font-bold block">{d.s > 0 ? d.s.toFixed(1) : '—'}</span>
+                              <input type="number" value={d.r || ''} onChange={(e) => {
+                                const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                setData(p => p.map(ev => ev.id === emp.id ? {...ev, daily: ev.daily.map((day, idx) => idx === i ? {...day, r: val} : day)} : ev));
+                              }} className="w-full text-center font-black bg-transparent outline-none" />
+                            </div>
+                          </td>
+                        ))}
+                        <td className="p-4 text-right font-black text-indigo-600 bg-indigo-50/30">{(b.weekday + b.weekend).toFixed(1)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+      <ReportOverlay />
+    </div>
+  );
+};
+export default App;
