@@ -1,11 +1,12 @@
-// Version: 260327-REPORT-FIX
+// Version: 260327-FINAL-INTEGRATION
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Save, Lock, Unlock, Loader2, EyeOff, ChevronLeft, ChevronRight, Activity, Calendar, Target, FileText, X, Download, CheckCircle2 } from 'lucide-react';
 
 const App = () => {
-  const APP_VERSION = "260327-FINAL";
+  const APP_VERSION = "260327-V1";
   const API_URL = import.meta.env.VITE_API_URL || "https://aroi-payroll-backend.onrender.com";
 
+  // --- STATE ---
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showReport, setShowReport] = useState(false);
@@ -14,6 +15,7 @@ const App = () => {
   const [hiddenStaff, setHiddenStaff] = useState(new Set());
   const [paidStaff, setPaidStaff] = useState(new Set());
 
+  // --- DATE LOGIC ---
   const getCurrentAroiMonday = () => {
     const now = new Date();
     const day = now.getDay();
@@ -32,8 +34,11 @@ const App = () => {
         approved: localStorage.getItem(`approved_${emp.id}`) === 'true'
       })) : [];
       setData(normalizedData);
-    } catch (err) { console.error("Fetch Error:", err); }
-    finally { setLoading(false); }
+    } catch (err) { 
+      console.error("Fetch Error:", err); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   useEffect(() => { fetchData(); }, [startDate]);
@@ -46,6 +51,18 @@ const App = () => {
     });
   }, []);
 
+  // Keyboard Navigation (J/K)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.target.tagName === 'INPUT') return;
+      if (e.key.toLowerCase() === 'j') shiftDate(-14);
+      if (e.key.toLowerCase() === 'k') shiftDate(14);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [shiftDate]);
+
+  // --- ACTIONS ---
   const toggleApprove = (id) => {
     setData(prev => prev.map(emp => {
       if (emp.id === id) {
@@ -66,9 +83,11 @@ const App = () => {
 
   const allDates = useMemo(() => {
     const parts = startDate.split('-').map(Number);
+    if (parts.length !== 3) return Array(14).fill("—");
     return Array.from({ length: 14 }).map((_, i) => new Date(parts[0], parts[1] - 1, parts[2] + i).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }));
   }, [startDate]);
 
+  // --- COMPONENTS ---
   const ReportOverlay = () => {
     if (!showReport) return null;
     const shops = ["Maruay Thai", "PAD Thai Food", "Other"];
@@ -85,7 +104,10 @@ const App = () => {
           </div>
 
           {shops.map(shop => {
-            const filtered = data.filter(e => e.shop === shop);
+            const filtered = data.filter(e => {
+                if (shop === "Other") return e.shop === "Other" || !e.shop;
+                return e.shop === shop;
+            });
             if (filtered.length === 0 && shop === "Other") return null;
 
             return (
@@ -95,7 +117,7 @@ const App = () => {
                     <div className={`w-2 h-8 ${shop === 'Other' ? 'bg-orange-400' : 'bg-emerald-500'} rounded-full`}/> {shop}
                   </h2>
                   {shop !== "Other" && (
-                    <button className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-[10px] hover:bg-blue-700 shadow-lg">
+                    <button className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-[10px] hover:bg-blue-700 shadow-lg transition-all active:scale-95">
                       <Download size={16}/> Download {shop} ABA (TFN ONLY)
                     </button>
                   )}
@@ -108,8 +130,8 @@ const App = () => {
                         <th className="p-4 w-16 text-center">Paid</th>
                         <th className="p-4">Staff Member</th>
                         <th className="p-4">Pay Type</th>
-                        <th className="p-4 text-right">Hrs (Wkdy / Wkend)</th>
-                        <th className="p-4 text-right">Val (Wkdy / Wkend)</th>
+                        <th className="p-4 text-right">Hrs (Wkdy/Wkend)</th>
+                        <th className="p-4 text-right">Val (Wkdy/Wkend)</th>
                         <th className="p-4 text-right">Extra/Cash</th>
                         <th className="p-4 text-right bg-slate-100 text-slate-900 font-black">Total Payment</th>
                       </tr>
@@ -159,6 +181,7 @@ const App = () => {
       `}</style>
 
       <div className="max-w-[1900px] mx-auto">
+        {/* TOP BAR */}
         <div className="flex justify-between items-center mb-4 bg-white p-3 rounded-2xl shadow-sm border border-slate-200">
           <div className="flex items-center gap-4">
             <div className="bg-slate-900 p-2.5 rounded-xl text-white"><Activity size={18} /></div>
@@ -189,6 +212,7 @@ const App = () => {
           </button>
         </div>
 
+        {/* MAIN DATA GRID */}
         <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden relative">
           {loading && (
             <div className="absolute inset-0 z-[100] bg-white/60 backdrop-blur-[2px] flex items-center justify-center">
@@ -226,7 +250,7 @@ const App = () => {
                       <td className="p-3 sticky left-0 z-20 bg-white border-r border-slate-200 group-hover:bg-slate-50 overflow-hidden">
                         <div className="flex items-center gap-3">
                           {emp.approved ? <div className="text-amber-500 bg-amber-100 p-1.5 rounded-lg"><Lock size={14} fill="currentColor" /></div> : 
-                           isHidden ? <button onClick={() => setHiddenStaff(p => { const n = new Set(p); n.delete(emp.id); return n; })} className="w-full text-center py-0.5 text-[8px] font-black text-emerald-600 bg-emerald-50 rounded-md uppercase tracking-widest">Show</button> :
+                           isHidden ? <button onClick={() => setHiddenStaff(p => { const n = new Set(p); n.delete(emp.id); return n; })} className="w-full text-center py-0.5 text-[8px] font-black text-emerald-600 bg-emerald-50 rounded-md uppercase">Show</button> :
                            <button onClick={() => setHiddenStaff(p => { const n = new Set(p); n.add(emp.id); return n; })} className="text-slate-300 hover:text-slate-500"><EyeOff size={14}/></button>}
                           {!isHidden && <span className={`font-bold uppercase tracking-tighter truncate text-[11px] ${emp.approved ? 'text-amber-700' : 'text-slate-700'}`}>{emp.name}</span>}
                         </div>
