@@ -9,13 +9,14 @@ const App = () => {
 
   const API_URL = import.meta.env.VITE_API_URL || "https://aroi-payroll-backend.onrender.com";
 
-  // --- STABLE DATE LOGIC ---
+  // --- REWRITTEN ISO MONDAY LOGIC ---
   const getCurrentAroiMonday = () => {
-    const now = new Date();
-    const day = now.getDay();
-    // Adjust to get the most recent Monday
-    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(now.setDate(diff));
+    const today = new Date();
+    const day = today.getDay(); 
+    // If Sunday(0), we need to go back 6 days. Otherwise, go back (day - 1) days.
+    const diff = today.getDate() - (day === 0 ? 6 : day - 1);
+    const monday = new Date(today.setDate(diff));
+    monday.setHours(12, 0, 0, 0); // Avoid DST issues
     return monday.toISOString().split('T')[0];
   };
 
@@ -35,7 +36,7 @@ const App = () => {
     setError(null);
     try {
       const response = await fetch(`${API_URL}/api/payroll-data?start=${startDate}`);
-      if (!response.ok) throw new Error(`Server Status: ${response.status}`);
+      if (!response.ok) throw new Error(`Server Error: ${response.status}`);
       const result = await response.json();
       setData(Array.isArray(result) ? result.map(emp => ({
         ...emp, id: emp.id.toUpperCase(), approved: localStorage.getItem(`approved_${emp.id.toUpperCase()}`) === 'true'
@@ -45,19 +46,12 @@ const App = () => {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // FIXED: Fortnight Navigation Logic
   const shiftFortnight = (direction) => {
-    setStartDate(prevDate => {
-      const [year, month, day] = prevDate.split('-').map(Number);
-      // Create date at noon to avoid DST/Timezone shifts
-      const date = new Date(year, month - 1, day, 12, 0, 0);
-      date.setDate(date.getDate() + (direction * 14));
-      
-      const y = date.getFullYear();
-      const m = String(date.getMonth() + 1).padStart(2, '0');
-      const d = String(date.getDate()).padStart(2, '0');
-      return `${y}-${m}-${d}`;
-    });
+    const [y, m, d] = startDate.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    date.setDate(date.getDate() + (direction * 14));
+    date.setHours(12, 0, 0, 0);
+    setStartDate(date.toISOString().split('T')[0]);
   };
 
   const calculateBreakdown = (emp) => {
@@ -94,14 +88,14 @@ const App = () => {
           <div className="flex items-center gap-4">
             <div className="bg-slate-900 p-2 rounded-xl text-white"><Activity size={18} /></div>
             <div>
-              <h1 className="text-sm font-black text-slate-900 uppercase leading-none">Aroi Payroll</h1>
-              <span className="text-[9px] font-bold text-emerald-500 uppercase block mt-1">v{APP_VERSION}</span>
+              <h1 className="text-sm font-black text-slate-900 uppercase">Aroi Payroll</h1>
+              <span className="text-[9px] font-bold text-emerald-500 uppercase block">v{APP_VERSION}</span>
             </div>
             
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 ml-4">
-              <button onClick={() => shiftFortnight(-1)} className="p-1.5 hover:bg-white rounded-lg transition-all"><ChevronLeft size={16}/></button>
+              <button onClick={() => shiftFortnight(-1)} className="p-1.5 hover:bg-white rounded-lg"><ChevronLeft size={16}/></button>
               <div className="px-4 font-black text-slate-700 min-w-[140px] text-center">{allDates[0]} - {allDates[13]}</div>
-              <button onClick={() => shiftFortnight(1)} className="p-1.5 hover:bg-white rounded-lg transition-all"><ChevronRight size={16}/></button>
+              <button onClick={() => shiftFortnight(1)} className="p-1.5 hover:bg-white rounded-lg"><ChevronRight size={16}/></button>
             </div>
 
             <button onClick={() => setStartDate(getCurrentAroiMonday())} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl font-black uppercase text-[9px] text-slate-600 shadow-sm hover:bg-slate-50">
@@ -112,19 +106,19 @@ const App = () => {
           <div className="flex items-center gap-2">
             <button onClick={() => setShowReport(true)} className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 text-white rounded-xl font-black uppercase text-[10px]"><FileText size={14} /> Report</button>
             <button onClick={fetchData} className="p-2.5 bg-slate-100 rounded-xl hover:bg-slate-200 border border-slate-200"><RefreshCw size={14} className={loading ? 'animate-spin' : ''}/></button>
-            <button onClick={async () => { setIsSyncing(true); try { await fetch(`${API_URL}/api/sync`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, startDate }) }); } finally { setIsSyncing(false); } }} className="bg-emerald-600 text-white px-6 py-2.5 rounded-xl font-black uppercase shadow-md flex items-center gap-2 hover:bg-emerald-700 transition-all">
+            <button onClick={async () => { setIsSyncing(true); try { await fetch(`${API_URL}/api/sync`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, startDate }) }); } finally { setIsSyncing(false); } }} className="bg-emerald-600 text-white px-6 py-2.5 rounded-xl font-black uppercase shadow-md flex items-center gap-2 hover:bg-emerald-700">
               {isSyncing ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} <span>Save Sync</span>
             </button>
           </div>
         </div>
 
         <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden relative">
-          {loading && <div className="absolute inset-0 z-50 bg-white/60 flex items-center justify-center font-black uppercase text-slate-400">Syncing with Square...</div>}
+          {loading && <div className="absolute inset-0 z-50 bg-white/60 flex items-center justify-center font-black uppercase text-slate-400">Syncing...</div>}
           <div className="table-scroll overflow-x-auto max-h-[calc(100vh-160px)]">
             <table className="w-full text-left border-collapse table-fixed min-w-[1800px]">
               <thead className="sticky top-0 z-40 bg-slate-900 text-[10px] uppercase text-white font-bold">
                 <tr className="divide-x divide-slate-800">
-                  <th className="w-52 p-4 sticky left-0 z-50 bg-slate-950">Team Member</th>
+                  <th className="w-52 p-4 sticky left-0 z-50 bg-slate-950 shadow-xl">Team Member</th>
                   {Array.from({ length: 14 }).map((_, i) => (
                     <React.Fragment key={i}>
                       <th className={`w-[62px] p-2 text-center ${i % 7 >= 5 ? 'bg-orange-900/20 text-orange-400' : ''}`}>{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][i % 7]}</th>
@@ -136,33 +130,32 @@ const App = () => {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {data.map((emp) => {
-                    const b = calculateBreakdown(emp);
-                    const isHidden = hiddenStaff.has(emp.id) && !emp.approved;
-                    return (
-                        <tr key={emp.id} className={`divide-x divide-slate-50 transition-all ${emp.approved ? 'bg-amber-50/40' : isHidden ? 'row-hidden' : 'hover:bg-slate-50/50'}`}>
-                            <td className="p-3 sticky left-0 z-20 bg-white border-r font-bold uppercase text-slate-700">
-                                <div className="flex items-center gap-2">
-                                    {emp.approved ? <Lock size={12} className="text-amber-500"/> : isHidden ? <button onClick={() => setHiddenStaff(p => { const n = new Set(p); n.delete(emp.id); return n; })} className="text-[8px] text-emerald-600 font-black">Show</button> : <button onClick={() => setHiddenStaff(p => { const n = new Set(p); n.add(emp.id); return n; })}><EyeOff size={12} className="text-slate-300"/></button>}
-                                    {!isHidden && emp.name}
-                                </div>
-                            </td>
-                            {!isHidden ? emp.daily?.map((day, idx) => (
-                                <React.Fragment key={idx}>
-                                    <td className="p-1"><div className={`p-1 rounded-lg border flex flex-col items-center ${day.s > 0 ? 'bg-emerald-50 border-emerald-100' : 'border-transparent'}`}><span className="text-[8px] font-bold text-slate-400">{day.s > 0 ? day.s.toFixed(1) : '—'}</span><input type="number" value={day.r || ''} disabled={emp.approved} onChange={(e) => { const val = parseFloat(e.target.value) || 0; setData(p => p.map(ev => ev.id === emp.id ? {...ev, daily: ev.daily.map((d, i) => i === idx ? {...d, r: val} : d)} : ev)); }} className="w-full text-center text-[11px] font-black outline-none bg-transparent" /></div></td>
-                                    {(idx === 6 || idx === 13) && <td className="p-1"><input type="number" value={emp.extra?.[idx === 6 ? 0 : 1] || ''} disabled={emp.approved} onChange={(e) => { const val = parseFloat(e.target.value) || 0; setData(p => p.map(ev => ev.id === emp.id ? {...ev, extra: idx === 6 ? [val, ev.extra[1]] : [ev.extra[0], val]} : ev)); }} className="w-full text-center font-mono font-bold text-emerald-700 bg-transparent" /></td>}
-                                </React.Fragment>
-                            )) : <td colSpan={20} />}
-                            {!isHidden && <><td className="p-2 text-center font-bold text-slate-400">{b.weekday}</td><td className="p-2 text-center font-bold text-orange-600">{b.weekend}</td><td className="p-2 text-center font-black bg-emerald-50 text-emerald-900">{b.total}</td><td className="p-2 text-center"><button onClick={() => { const s = !emp.approved; localStorage.setItem(`approved_${emp.id}`, s); setData(p => p.map(e => e.id === emp.id ? {...e, approved: s} : e)); }} className={`w-full py-1 rounded border font-black uppercase text-[9px] ${emp.approved ? 'bg-amber-600 text-white' : 'bg-white text-slate-400'}`}>{emp.approved ? 'Unlock' : 'Approve'}</button></td></>}
-                        </tr>
-                    )
-                })}
+                  const b = calculateBreakdown(emp);
+                  const isHidden = hiddenStaff.has(emp.id) && !emp.approved;
+                  return (
+                    <tr key={emp.id} className={`divide-x divide-slate-50 transition-all ${emp.approved ? 'bg-amber-50/40' : isHidden ? 'row-hidden' : 'hover:bg-slate-50/50'}`}>
+                      <td className="p-3 sticky left-0 z-20 bg-white border-r font-bold uppercase text-slate-700">
+                        <div className="flex items-center gap-2">
+                          {emp.approved ? <Lock size={12} className="text-amber-500"/> : isHidden ? <button onClick={() => setHiddenStaff(p => { const n = new Set(p); n.delete(emp.id); return n; })} className="text-[8px] text-emerald-600 font-black">Show</button> : <button onClick={() => setHiddenStaff(p => { const n = new Set(p); n.add(emp.id); return n; })}><EyeOff size={12} className="text-slate-300"/></button>}
+                          {!isHidden && emp.name}
+                        </div>
+                      </td>
+                      {!isHidden ? emp.daily?.map((day, idx) => (
+                        <React.Fragment key={idx}>
+                          <td className="p-1"><div className={`p-1 rounded-lg border flex flex-col items-center ${day.s > 0 ? 'bg-emerald-50 border-emerald-100' : 'border-transparent'}`}><span className="text-[8px] font-bold text-slate-400">{day.s > 0 ? day.s.toFixed(1) : '—'}</span><input type="number" value={day.r || ''} disabled={emp.approved} onChange={(e) => { const val = parseFloat(e.target.value) || 0; setData(p => p.map(ev => ev.id === emp.id ? {...ev, daily: ev.daily.map((d, i) => i === idx ? {...d, r: val} : d)} : ev)); }} className="w-full text-center text-[11px] font-black outline-none bg-transparent" /></div></td>
+                          {(idx === 6 || idx === 13) && <td className="p-1"><input type="number" value={emp.extra?.[idx === 6 ? 0 : 1] || ''} disabled={emp.approved} onChange={(e) => { const val = parseFloat(e.target.value) || 0; setData(p => p.map(ev => ev.id === emp.id ? {...ev, extra: idx === 6 ? [val, ev.extra[1]] : [ev.extra[0], val]} : ev)); }} className="w-full text-center font-mono font-bold text-emerald-700 bg-transparent" /></td>}
+                        </React.Fragment>
+                      )) : <td colSpan={20} />}
+                      {!isHidden && <><td className="p-2 text-center font-bold text-slate-400">{b.weekday}</td><td className="p-2 text-center font-bold text-orange-600">{b.weekend}</td><td className="p-2 text-center font-black bg-emerald-50 text-emerald-900">{b.total}</td><td className="p-2 text-center"><button onClick={() => { const s = !emp.approved; localStorage.setItem(`approved_${emp.id}`, s); setData(p => p.map(e => e.id === emp.id ? {...e, approved: s} : e)); }} className={`w-full py-1 rounded border font-black uppercase text-[9px] ${emp.approved ? 'bg-amber-600 text-white' : 'bg-white text-slate-400'}`}>{emp.approved ? 'Unlock' : 'Approve'}</button></td></>}
+                    </tr>
+                )})}
               </tbody>
             </table>
           </div>
         </div>
       </div>
 
-      {/* --- REPORT MODAL --- */}
+      {/* --- FINANCIAL REPORT --- */}
       {showReport && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 no-print">
             <div className="bg-white w-full max-w-6xl rounded-3xl shadow-2xl flex flex-col max-h-[95vh] overflow-hidden">
