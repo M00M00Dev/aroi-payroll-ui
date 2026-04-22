@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Save, Lock, Unlock, Loader2, EyeOff, ChevronLeft, ChevronRight, Activity, Calendar, AlertTriangle, Target, RefreshCw } from 'lucide-react';
+import { Save, Lock, Unlock, Loader2, EyeOff, ChevronLeft, ChevronRight, Activity, Calendar, AlertTriangle, Target, RefreshCw, FileText, X, Printer } from 'lucide-react';
 
 const App = () => {
   // --- AUTOMATIC VERSIONING ---
@@ -31,6 +31,7 @@ const App = () => {
   const [error, setError] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [hiddenStaff, setHiddenStaff] = useState(new Set());
+  const [showReport, setShowReport] = useState(false); // New Report State
 
   // --- FETCHING LOGIC ---
   useEffect(() => {
@@ -89,10 +90,16 @@ const App = () => {
   };
 
   const calculateBreakdown = (emp) => {
-    if (!emp?.daily) return { weekday: "0.0", weekend: "0.0", total: "0.0" };
+    if (!emp?.daily) return { weekday: 0, weekend: 0, extra: 0, total: 0 };
     const weekday = emp.daily.reduce((acc, d, i) => (i % 7 < 5) ? acc + (Number(d.r) || 0) : acc, 0);
     const weekend = emp.daily.reduce((acc, d, i) => (i % 7 >= 5) ? acc + (Number(d.r) || 0) : acc, 0);
-    return { weekday: weekday.toFixed(1), weekend: weekend.toFixed(1), total: (weekday + weekend).toFixed(1) };
+    const extra = (emp.extra || []).reduce((acc, val) => acc + (Number(val) || 0), 0);
+    return { 
+        weekday: weekday.toFixed(1), 
+        weekend: weekend.toFixed(1), 
+        extra: extra.toFixed(2),
+        total: (weekday + weekend).toFixed(1) 
+    };
   };
 
   const allDates = useMemo(() => {
@@ -109,6 +116,7 @@ const App = () => {
         .table-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .row-hidden { height: 24px !important; background-color: #f8fafc !important; }
         .row-hidden td { padding: 0 !important; }
+        @media print { .no-print { display: none !important; } }
       `}</style>
 
       <div className="max-w-[1900px] mx-auto">
@@ -131,7 +139,12 @@ const App = () => {
           </div>
 
           <div className="flex items-center gap-3">
-            {error && <div className="text-red-500 font-bold uppercase text-[9px] flex items-center gap-1"><AlertTriangle size={12}/> {error}</div>}
+            <button 
+                onClick={() => setShowReport(true)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 text-white rounded-xl font-black uppercase text-[10px] hover:bg-slate-700 transition-all shadow-md"
+            >
+                <FileText size={14} /> Report
+            </button>
             <button onClick={fetchData} className="p-2 bg-slate-100 rounded-lg hover:bg-slate-200"><RefreshCw size={14} className={loading ? 'animate-spin' : ''}/></button>
             <button onClick={async () => {
               setIsSyncing(true);
@@ -144,6 +157,7 @@ const App = () => {
           </div>
         </div>
 
+        {/* --- MAIN GRID --- */}
         <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden relative">
           {loading && (
             <div className="absolute inset-0 z-[100] bg-white/60 backdrop-blur-[2px] flex flex-col items-center justify-center">
@@ -179,7 +193,7 @@ const App = () => {
                   const isHidden = hiddenStaff.has(emp.id) && !emp.approved;
                   return (
                     <tr key={emp.id} className={`group divide-x divide-slate-50 transition-all ${emp.approved ? 'bg-amber-50/40' : isHidden ? 'row-hidden' : 'hover:bg-slate-50/50'}`}>
-                      <td className="p-3 sticky left-0 z-20 bg-white border-r border-slate-200 group-hover:bg-slate-50 overflow-hidden">
+                      <td className="p-3 sticky left-0 z-20 bg-white border-r border-slate-200 group-hover:bg-slate-50">
                         <div className="flex items-center gap-3">
                           {emp.approved ? (
                             <div className="text-amber-500 bg-amber-100 p-1.5 rounded-lg"><Lock size={14} fill="currentColor" /></div>
@@ -222,9 +236,9 @@ const App = () => {
 
                       {!isHidden && (
                         <>
-                          <td className="p-2 text-center font-bold font-mono text-slate-400">{b.weekday}</td>
-                          <td className="p-2 text-center font-bold font-mono text-orange-600">{b.weekend}</td>
-                          <td className="p-2 text-center font-black text-[13px] font-mono bg-emerald-50 text-emerald-900">{b.total}</td>
+                          <td className="p-2 text-center font-bold font-mono text-slate-400">{calculateBreakdown(emp).weekday}</td>
+                          <td className="p-2 text-center font-bold font-mono text-orange-600">{calculateBreakdown(emp).weekend}</td>
+                          <td className="p-2 text-center font-black text-[13px] font-mono bg-emerald-50 text-emerald-900">{calculateBreakdown(emp).total}</td>
                           <td className="p-2 text-center">
                             <button onClick={() => toggleApprove(emp.id)} className={`w-full py-1.5 rounded flex items-center justify-center gap-1.5 border font-black uppercase text-[9px] ${emp.approved ? 'bg-amber-600 border-amber-700 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}>
                               {emp.approved ? <Unlock size={12} /> : <Lock size={12}/>} {emp.approved ? 'Unlock' : 'Approve'}
@@ -239,6 +253,72 @@ const App = () => {
             </table>
           </div>
         </div>
+
+        {/* --- REPORT POPUP --- */}
+        {showReport && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
+                    <div className="p-6 bg-slate-50 border-b border-slate-200 flex justify-between items-center no-print">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-emerald-600 p-2 rounded-xl text-white"><FileText size={20} /></div>
+                            <div>
+                                <h2 className="text-sm font-black uppercase text-slate-900">Payroll Summary</h2>
+                                <p className="text-[10px] text-slate-500 font-bold">{allDates[0]} - {allDates[13]}</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                            <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl font-black uppercase text-[10px] hover:bg-slate-100"><Printer size={14}/> Print</button>
+                            <button onClick={() => setShowReport(false)} className="p-2 bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-slate-600"><X size={20}/></button>
+                        </div>
+                    </div>
+
+                    <div className="p-8 overflow-y-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="border-b-2 border-slate-900 text-[10px] uppercase font-black text-slate-400">
+                                    <th className="py-4">Staff Member</th>
+                                    <th className="py-4 text-center">Weekday</th>
+                                    <th className="py-4 text-center text-orange-600">Weekend</th>
+                                    <th className="py-4 text-center text-emerald-600">Extra $</th>
+                                    <th className="py-4 text-right">Total Hours</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {data.filter(e => !hiddenStaff.has(e.id)).map(emp => {
+                                    const b = calculateBreakdown(emp);
+                                    return (
+                                        <tr key={emp.id} className="text-xs font-bold text-slate-700">
+                                            <td className="py-4 uppercase tracking-tighter">{emp.name}</td>
+                                            <td className="py-4 text-center font-mono text-slate-400">{b.weekday}</td>
+                                            <td className="py-4 text-center font-mono text-orange-600">{b.weekend}</td>
+                                            <td className="py-4 text-center font-mono text-emerald-600">${b.extra}</td>
+                                            <td className="py-4 text-right font-black text-sm text-slate-900">{b.total} <span className="text-[10px] text-slate-300">hrs</span></td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                            <tfoot>
+                                <tr className="border-t-2 border-slate-900 bg-slate-50 font-black">
+                                    <td className="py-4 px-2 uppercase">Company Total</td>
+                                    <td className="py-4 text-center font-mono">
+                                        {data.reduce((acc, e) => acc + parseFloat(calculateBreakdown(e).weekday), 0).toFixed(1)}
+                                    </td>
+                                    <td className="py-4 text-center font-mono text-orange-600">
+                                        {data.reduce((acc, e) => acc + parseFloat(calculateBreakdown(e).weekend), 0).toFixed(1)}
+                                    </td>
+                                    <td className="py-4 text-center font-mono text-emerald-600">
+                                        ${data.reduce((acc, e) => acc + parseFloat(calculateBreakdown(e).extra), 0).toFixed(2)}
+                                    </td>
+                                    <td className="py-4 text-right text-base">
+                                        {data.reduce((acc, e) => acc + parseFloat(calculateBreakdown(e).total), 0).toFixed(1)} hrs
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        )}
       </div>
     </div>
   );
