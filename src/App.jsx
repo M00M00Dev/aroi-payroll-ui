@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Save, Lock, Unlock, Loader2, EyeOff, ChevronLeft, ChevronRight, Activity, Calendar, AlertTriangle, Target, RefreshCw, FileText, X, Printer } from 'lucide-react';
+import { Save, Lock, Unlock, Loader2, EyeOff, ChevronLeft, ChevronRight, Activity, Calendar, AlertTriangle, Target, RefreshCw, FileText, X } from 'lucide-react';
 
 const App = () => {
+  // Versioning based on date/time
   const APP_VERSION = useMemo(() => {
     const now = new Date();
     return `${now.getFullYear().toString().slice(-2)}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}.${now.getHours()}${now.getMinutes()}`;
@@ -9,21 +10,19 @@ const App = () => {
 
   const API_URL = import.meta.env.VITE_API_URL || "https://aroi-payroll-backend.onrender.com";
 
-  // --- REWRITTEN ISO MONDAY LOGIC ---
+  // --- ISO MONDAY LOGIC ---
   const getCurrentAroiMonday = () => {
     const today = new Date();
     const day = today.getDay(); 
-    // If Sunday(0), we need to go back 6 days. Otherwise, go back (day - 1) days.
     const diff = today.getDate() - (day === 0 ? 6 : day - 1);
     const monday = new Date(today.setDate(diff));
-    monday.setHours(12, 0, 0, 0); // Avoid DST issues
+    monday.setHours(12, 0, 0, 0); 
     return monday.toISOString().split('T')[0];
   };
 
   const [startDate, setStartDate] = useState(getCurrentAroiMonday()); 
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [hiddenStaff, setHiddenStaff] = useState(new Set());
   const [showReport, setShowReport] = useState(false);
@@ -33,7 +32,6 @@ const App = () => {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const response = await fetch(`${API_URL}/api/payroll-data?start=${startDate}`);
       if (!response.ok) throw new Error(`Server Error: ${response.status}`);
@@ -41,7 +39,7 @@ const App = () => {
       setData(Array.isArray(result) ? result.map(emp => ({
         ...emp, id: emp.id.toUpperCase(), approved: localStorage.getItem(`approved_${emp.id.toUpperCase()}`) === 'true'
       })) : []);
-    } catch (err) { setError(err.message); } finally { setLoading(false); }
+    } catch (err) { console.error(err); } finally { setLoading(false); }
   }, [API_URL, startDate]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -55,13 +53,19 @@ const App = () => {
   };
 
   const calculateBreakdown = (emp) => {
-    if (!emp?.daily) return { weekday: "0.0", weekend: "0.0", total: "0.0", extra: "0.00", amount: "0.00", rWd: 0, rWe: 0 };
+    if (!emp?.daily) return { weekday: "0.0", weekend: "0.0", total: "0.0", amount: "0.00", rWd: 0, rWe: 0 };
     const wd = emp.daily.reduce((acc, d, i) => (i % 7 < 5) ? acc + (Number(d.r) || 0) : acc, 0);
     const we = emp.daily.reduce((acc, d, i) => (i % 7 >= 5) ? acc + (Number(d.r) || 0) : acc, 0);
     const ex = (emp.extra || [0, 0]).reduce((acc, val) => acc + (Number(val) || 0), 0);
+    
+    // PRIORITY: Google Sheet Rate -> Local Manual Override -> 0
     const rWd = emp.rate_weekday || rates[emp.id]?.wd || 0;
     const rWe = emp.rate_weekend || rates[emp.id]?.we || 0;
-    return { weekday: wd.toFixed(1), weekend: we.toFixed(1), total: (wd + we).toFixed(1), extra: ex.toFixed(2), amount: ((wd * rWd) + (we * rWe) + ex).toFixed(2), rWd, rWe };
+    
+    return { 
+      weekday: wd.toFixed(1), weekend: we.toFixed(1), total: (wd + we).toFixed(1), 
+      extra: ex.toFixed(2), amount: ((wd * rWd) + (we * rWe) + ex).toFixed(2), rWd, rWe 
+    };
   };
 
   const allDates = useMemo(() => {
@@ -73,13 +77,12 @@ const App = () => {
   }, [startDate]);
 
   return (
-    <div className="min-h-screen bg-[#F1F5F9] p-4 font-sans text-[11px]">
+    <div className="min-h-screen bg-[#F1F5F9] p-4 font-sans text-[11px] antialiased">
       <style>{`
         input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         .table-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
         .table-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .row-hidden { height: 24px !important; background-color: #f8fafc !important; }
-        .row-hidden td { padding: 0 !important; }
         @media print { .no-print { display: none !important; } body { background: white; } }
       `}</style>
 
@@ -106,14 +109,18 @@ const App = () => {
           <div className="flex items-center gap-2">
             <button onClick={() => setShowReport(true)} className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 text-white rounded-xl font-black uppercase text-[10px]"><FileText size={14} /> Report</button>
             <button onClick={fetchData} className="p-2.5 bg-slate-100 rounded-xl hover:bg-slate-200 border border-slate-200"><RefreshCw size={14} className={loading ? 'animate-spin' : ''}/></button>
-            <button onClick={async () => { setIsSyncing(true); try { await fetch(`${API_URL}/api/sync`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, startDate }) }); } finally { setIsSyncing(false); } }} className="bg-emerald-600 text-white px-6 py-2.5 rounded-xl font-black uppercase shadow-md flex items-center gap-2 hover:bg-emerald-700">
+            <button onClick={async () => { 
+                setIsSyncing(true); 
+                try { await fetch(`${API_URL}/api/sync`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, startDate }) }); } 
+                finally { setIsSyncing(false); } 
+            }} className="bg-emerald-600 text-white px-6 py-2.5 rounded-xl font-black uppercase shadow-md flex items-center gap-2 hover:bg-emerald-700">
               {isSyncing ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} <span>Save Sync</span>
             </button>
           </div>
         </div>
 
         <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden relative">
-          {loading && <div className="absolute inset-0 z-50 bg-white/60 flex items-center justify-center font-black uppercase text-slate-400">Syncing...</div>}
+          {loading && <div className="absolute inset-0 z-50 bg-white/60 flex items-center justify-center font-black uppercase text-slate-400">Loading Grid...</div>}
           <div className="table-scroll overflow-x-auto max-h-[calc(100vh-160px)]">
             <table className="w-full text-left border-collapse table-fixed min-w-[1800px]">
               <thead className="sticky top-0 z-40 bg-slate-900 text-[10px] uppercase text-white font-bold">
@@ -130,25 +137,26 @@ const App = () => {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {data.map((emp) => {
-                  const b = calculateBreakdown(emp);
-                  const isHidden = hiddenStaff.has(emp.id) && !emp.approved;
-                  return (
-                    <tr key={emp.id} className={`divide-x divide-slate-50 transition-all ${emp.approved ? 'bg-amber-50/40' : isHidden ? 'row-hidden' : 'hover:bg-slate-50/50'}`}>
-                      <td className="p-3 sticky left-0 z-20 bg-white border-r font-bold uppercase text-slate-700">
-                        <div className="flex items-center gap-2">
-                          {emp.approved ? <Lock size={12} className="text-amber-500"/> : isHidden ? <button onClick={() => setHiddenStaff(p => { const n = new Set(p); n.delete(emp.id); return n; })} className="text-[8px] text-emerald-600 font-black">Show</button> : <button onClick={() => setHiddenStaff(p => { const n = new Set(p); n.add(emp.id); return n; })}><EyeOff size={12} className="text-slate-300"/></button>}
-                          {!isHidden && emp.name}
-                        </div>
-                      </td>
-                      {!isHidden ? emp.daily?.map((day, idx) => (
-                        <React.Fragment key={idx}>
-                          <td className="p-1"><div className={`p-1 rounded-lg border flex flex-col items-center ${day.s > 0 ? 'bg-emerald-50 border-emerald-100' : 'border-transparent'}`}><span className="text-[8px] font-bold text-slate-400">{day.s > 0 ? day.s.toFixed(1) : '—'}</span><input type="number" value={day.r || ''} disabled={emp.approved} onChange={(e) => { const val = parseFloat(e.target.value) || 0; setData(p => p.map(ev => ev.id === emp.id ? {...ev, daily: ev.daily.map((d, i) => i === idx ? {...d, r: val} : d)} : ev)); }} className="w-full text-center text-[11px] font-black outline-none bg-transparent" /></div></td>
-                          {(idx === 6 || idx === 13) && <td className="p-1"><input type="number" value={emp.extra?.[idx === 6 ? 0 : 1] || ''} disabled={emp.approved} onChange={(e) => { const val = parseFloat(e.target.value) || 0; setData(p => p.map(ev => ev.id === emp.id ? {...ev, extra: idx === 6 ? [val, ev.extra[1]] : [ev.extra[0], val]} : ev)); }} className="w-full text-center font-mono font-bold text-emerald-700 bg-transparent" /></td>}
-                        </React.Fragment>
-                      )) : <td colSpan={20} />}
-                      {!isHidden && <><td className="p-2 text-center font-bold text-slate-400">{b.weekday}</td><td className="p-2 text-center font-bold text-orange-600">{b.weekend}</td><td className="p-2 text-center font-black bg-emerald-50 text-emerald-900">{b.total}</td><td className="p-2 text-center"><button onClick={() => { const s = !emp.approved; localStorage.setItem(`approved_${emp.id}`, s); setData(p => p.map(e => e.id === emp.id ? {...e, approved: s} : e)); }} className={`w-full py-1 rounded border font-black uppercase text-[9px] ${emp.approved ? 'bg-amber-600 text-white' : 'bg-white text-slate-400'}`}>{emp.approved ? 'Unlock' : 'Approve'}</button></td></>}
-                    </tr>
-                )})}
+                    const b = calculateBreakdown(emp);
+                    const isHidden = hiddenStaff.has(emp.id) && !emp.approved;
+                    return (
+                        <tr key={emp.id} className={`divide-x divide-slate-50 transition-all ${emp.approved ? 'bg-amber-50/40' : isHidden ? 'row-hidden' : 'hover:bg-slate-50/50'}`}>
+                            <td className="p-3 sticky left-0 z-20 bg-white border-r font-bold uppercase text-slate-700">
+                                <div className="flex items-center gap-2">
+                                    {emp.approved ? <Lock size={12} className="text-amber-500"/> : isHidden ? <button onClick={() => setHiddenStaff(p => { const n = new Set(p); n.delete(emp.id); return n; })} className="text-[8px] text-emerald-600 font-black">Show</button> : <button onClick={() => setHiddenStaff(p => { const n = new Set(p); n.add(emp.id); return n; })}><EyeOff size={12} className="text-slate-300"/></button>}
+                                    {!isHidden && emp.name}
+                                </div>
+                            </td>
+                            {!isHidden ? emp.daily?.map((day, idx) => (
+                                <React.Fragment key={idx}>
+                                    <td className="p-1"><div className={`p-1 rounded-lg border flex flex-col items-center ${day.s > 0 ? 'bg-emerald-50 border-emerald-100' : 'border-transparent'}`}><span className="text-[8px] font-bold text-slate-400">{day.s > 0 ? day.s.toFixed(1) : '—'}</span><input type="number" value={day.r || ''} disabled={emp.approved} onChange={(e) => { const val = parseFloat(e.target.value) || 0; setData(p => p.map(ev => ev.id === emp.id ? {...ev, daily: ev.daily.map((d, i) => i === idx ? {...d, r: val} : d)} : ev)); }} className="w-full text-center text-[11px] font-black outline-none bg-transparent" /></div></td>
+                                    {(idx === 6 || idx === 13) && <td className="p-1"><input type="number" value={emp.extra?.[idx === 6 ? 0 : 1] || ''} disabled={emp.approved} onChange={(e) => { const val = parseFloat(e.target.value) || 0; setData(p => p.map(ev => ev.id === emp.id ? {...ev, extra: idx === 6 ? [val, ev.extra[1]] : [ev.extra[0], val]} : ev)); }} className="w-full text-center font-mono font-bold text-emerald-700 bg-transparent" /></td>}
+                                </React.Fragment>
+                            )) : <td colSpan={20} />}
+                            {!isHidden && <><td className="p-2 text-center font-bold text-slate-400">{b.weekday}</td><td className="p-2 text-center font-bold text-orange-600">{b.weekend}</td><td className="p-2 text-center font-black bg-emerald-50 text-emerald-900">{b.total}</td><td className="p-2 text-center"><button onClick={() => { const s = !emp.approved; localStorage.setItem(`approved_${emp.id}`, s); setData(p => p.map(e => e.id === emp.id ? {...e, approved: s} : e)); }} className={`w-full py-1 rounded border font-black uppercase text-[9px] ${emp.approved ? 'bg-amber-600 text-white' : 'bg-white text-slate-400'}`}>{emp.approved ? 'Unlock' : 'Approve'}</button></td></>}
+                        </tr>
+                    )
+                })}
               </tbody>
             </table>
           </div>
