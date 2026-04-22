@@ -9,7 +9,7 @@ const App = () => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [startDate, setStartDate] = useState('2026-03-09'); 
+  const [startDate, setStartDate] = useState(getCurrentAroiMonday()); 
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
   const [hiddenStaff, setHiddenStaff] = useState(new Set());
