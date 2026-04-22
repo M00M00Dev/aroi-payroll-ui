@@ -1,39 +1,43 @@
-// Version: 260422-STABLE-WAKEUP (Timeout Protection + Render Pre-heat)
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Save, Lock, Unlock, Loader2, EyeOff, ChevronLeft, ChevronRight, Activity, Calendar, AlertTriangle, Target, RefreshCw } from 'lucide-react';
 
 const App = () => {
-  const APP_VERSION = "260422.01";
+  const APP_VERSION = "260422.03";
   const API_URL = import.meta.env.VITE_API_URL || "https://aroi-payroll-backend.onrender.com";
 
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [startDate, setStartDate] = useState(getCurrentAroiMonday()); 
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [lastSaved, setLastSaved] = useState(null);
-  const [hiddenStaff, setHiddenStaff] = useState(new Set());
-
+  // --- LOGIC HELPERS ---
   const getCurrentAroiMonday = () => {
     const now = new Date();
     const day = now.getDay();
+    // Logic to find the Monday of the current week
     const diff = now.getDate() - day + (day === 0 ? -6 : 1);
     const monday = new Date(now.setDate(diff));
     return monday.toISOString().split('T')[0];
   };
 
-  // Pre-heat the backend on mount
+  // --- STATE ---
+  const [startDate, setStartDate] = useState(getCurrentAroiMonday()); // Automatically starts at current week
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSaved, setLastSaved] = useState(null);
+  const [hiddenStaff, setHiddenStaff] = useState(new Set());
+
+  // --- EFFECTS ---
+  
+  // 1. Initial Wake-up Pulse to trigger Render spin-up
   useEffect(() => {
-    fetch(`${API_URL}/`).catch(() => console.log("Wake-up pulse sent..."));
+    fetch(`${API_URL}/`).catch(() => console.log("Waking up backend..."));
   }, [API_URL]);
 
-  const fetchData = async () => {
+  // 2. Fetch Data with Timeout Protection
+  const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     
-    // AbortController prevents the "Infinite Pending" state
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 45000); // 45s for Render wake-up
+    const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 second timeout for cold starts
 
     try {
       const response = await fetch(`${API_URL}/api/payroll-data?start=${startDate}`, {
@@ -56,17 +60,18 @@ const App = () => {
       clearTimeout(timeoutId);
     } catch (err) { 
       if (err.name === 'AbortError') {
-        setError("Backend took too long to respond. It was likely sleeping. Please try again.");
+        setError("Backend is cold. It usually takes 40s to wake up. Please retry.");
       } else {
         setError(err.message); 
       }
     } finally { 
       setLoading(false); 
     }
-  };
+  }, [API_URL, startDate]);
 
-  useEffect(() => { fetchData(); }, [startDate]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
+  // --- HANDLERS ---
   const shiftDate = useCallback((days) => {
     setStartDate(current => {
       const [y, m, d] = current.split('-').map(Number);
@@ -120,7 +125,6 @@ const App = () => {
       `}</style>
 
       <div className="max-w-[1900px] mx-auto">
-        {/* Top Header */}
         <div className="flex justify-between items-center mb-4 bg-white p-3 rounded-2xl shadow-sm border border-slate-200">
           <div className="flex items-center gap-4">
             <div className="bg-slate-900 p-2.5 rounded-xl text-white"><Activity size={18} /></div>
@@ -148,7 +152,7 @@ const App = () => {
                 <div className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-xl border border-red-100 animate-pulse">
                     <AlertTriangle size={14} />
                     <span className="font-bold text-[10px] uppercase">{error}</span>
-                    <button onClick={fetchData} className="ml-2 bg-red-600 text-white p-1 rounded-md"><RefreshCw size={10}/></button>
+                    <button onClick={fetchData} className="ml-2 bg-red-600 text-white p-1 rounded-md active:scale-90 transition-transform"><RefreshCw size={10}/></button>
                 </div>
             )}
             
@@ -174,8 +178,8 @@ const App = () => {
                     <div className="absolute inset-0 animate-ping bg-emerald-400/20 rounded-full"></div>
                 </div>
                 <div className="text-center">
-                    <span className="font-black text-slate-900 uppercase tracking-[0.2em] text-[11px] block">Waking up Engine</span>
-                    <span className="text-[9px] text-slate-400 font-medium uppercase mt-1 block tracking-wider">Usually takes 40-50s on Free Tier</span>
+                    <span className="font-black text-slate-900 uppercase tracking-[0.2em] text-[11px] block">Updating Grid</span>
+                    <span className="text-[9px] text-slate-400 font-medium uppercase mt-1 block tracking-wider">Syncing with Square & Sheets...</span>
                 </div>
               </div>
             </div>
@@ -185,14 +189,14 @@ const App = () => {
             <table className="w-full text-left border-collapse table-fixed min-w-[1800px]">
               <thead className="sticky top-0 z-40 bg-slate-900 text-[10px] uppercase font-bold text-white">
                 <tr className="divide-x divide-slate-800">
-                  <th className="w-52 p-4 sticky left-0 z-50 bg-slate-950 shadow-xl border-r border-slate-800">Team Member</th>
+                  <th className="w-52 p-4 sticky left-0 z-50 bg-slate-950 shadow-xl">Team Member</th>
                   {Array.from({ length: 14 }).map((_, i) => (
                     <React.Fragment key={i}>
                       <th className={`w-[62px] p-2 text-center ${i % 7 >= 5 ? 'bg-orange-900/20 text-orange-400' : ''}`}>
                         <div className="text-[8px] opacity-40 mb-0.5">{allDates[i]}</div>
                         {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][i % 7]}
                       </th>
-                      {(i === 6 || i === 13) && <th className="w-20 p-2 text-center bg-emerald-950/50 text-emerald-400 border-x border-emerald-900/50">Extra $</th>}
+                      {(i === 6 || i === 13) && <th className="w-20 p-2 text-center bg-emerald-950/50 text-emerald-400">Extra $</th>}
                     </React.Fragment>
                   ))}
                   <th className="w-20 p-2 text-center bg-slate-950 text-slate-400">Wkday</th>
@@ -229,12 +233,12 @@ const App = () => {
                         return (
                           <React.Fragment key={idx}>
                             <td className={`p-1 ${idx % 7 >= 5 ? 'bg-orange-50/30' : ''}`}>
-                              <div className={`p-1 rounded-lg border flex flex-col items-center transition-colors ${emp.approved ? 'border-amber-100 bg-amber-50/20' : isMismatch ? 'bg-red-50 border-red-100 shadow-sm' : day.s > 0 ? 'bg-emerald-50 border-emerald-100' : 'border-transparent'}`}>
+                              <div className={`p-1 rounded-lg border flex flex-col items-center transition-colors ${emp.approved ? 'border-amber-100 bg-amber-50/20' : isMismatch ? 'bg-red-50 border-red-100' : day.s > 0 ? 'bg-emerald-50 border-emerald-100' : 'border-transparent'}`}>
                                 <span className={`text-[8px] font-bold mb-0.5 ${emp.approved ? 'text-amber-500' : isMismatch ? 'text-red-400' : day.s > 0 ? 'text-emerald-500' : 'text-slate-200'}`}>{day.s > 0 ? day.s.toFixed(1) : '—'}</span>
                                 <input type="number" value={day.r || ''} disabled={emp.approved} onChange={(e) => {
                                   const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
                                   setData(p => p.map(ev => ev.id === emp.id ? {...ev, daily: ev.daily.map((d, i) => i === idx ? {...d, r: val} : d)} : ev));
-                                }} className={`w-full text-center text-[11px] font-black rounded font-mono transition-all ${emp.approved ? 'bg-transparent text-amber-600 border-none' : 'bg-white border border-slate-200 text-slate-900 shadow-sm focus:ring-2 focus:ring-emerald-500 outline-none'}`} />
+                                }} className={`w-full text-center text-[11px] font-black rounded font-mono transition-all ${emp.approved ? 'bg-transparent text-amber-600 border-none' : 'bg-white border border-slate-200 text-slate-900 shadow-sm focus:ring-1 focus:ring-emerald-500 outline-none'}`} />
                               </div>
                             </td>
                             {(idx === 6 || idx === 13) && (
@@ -272,8 +276,8 @@ const App = () => {
                         <td colSpan={30} className="p-20 text-center">
                             <div className="flex flex-col items-center gap-4 text-slate-300">
                                 <Calendar size={48} className="opacity-20" />
-                                <span className="font-black uppercase tracking-widest text-xs">No payroll data found for this window</span>
-                                <button onClick={fetchData} className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase">Force Refresh</button>
+                                <span className="font-black uppercase tracking-widest text-xs">No personnel records found for this window</span>
+                                <button onClick={fetchData} className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase hover:bg-slate-800 transition-colors">Force Engine Wake-up</button>
                             </div>
                         </td>
                     </tr>
