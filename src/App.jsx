@@ -1,9 +1,9 @@
-// Version: 2603252355-UI-POLISH (Persistent Lock UX, Show Label, Row States)
+// Version: 260422-STABLE-WAKEUP (Timeout Protection + Render Pre-heat)
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Save, Lock, Unlock, Loader2, EyeOff, ChevronLeft, ChevronRight, Activity, Calendar, AlertTriangle, Target } from 'lucide-react';
+import { Save, Lock, Unlock, Loader2, EyeOff, ChevronLeft, ChevronRight, Activity, Calendar, AlertTriangle, Target, RefreshCw } from 'lucide-react';
 
 const App = () => {
-  const APP_VERSION = "2603252355";
+  const APP_VERSION = "260422.01";
   const API_URL = import.meta.env.VITE_API_URL || "https://aroi-payroll-backend.onrender.com";
 
   const [data, setData] = useState([]);
@@ -22,12 +22,26 @@ const App = () => {
     return monday.toISOString().split('T')[0];
   };
 
+  // Pre-heat the backend on mount
+  useEffect(() => {
+    fetch(`${API_URL}/`).catch(() => console.log("Wake-up pulse sent..."));
+  }, [API_URL]);
+
   const fetchData = async () => {
     setLoading(true);
     setError(null);
+    
+    // AbortController prevents the "Infinite Pending" state
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45000); // 45s for Render wake-up
+
     try {
-      const response = await fetch(`${API_URL}/api/payroll-data?start=${startDate}`);
-      if (!response.ok) throw new Error("Connection Failure");
+      const response = await fetch(`${API_URL}/api/payroll-data?start=${startDate}`, {
+        signal: controller.signal
+      });
+      
+      if (!response.ok) throw new Error(`Server Status: ${response.status}`);
+      
       const result = await response.json();
       const normalizedData = Array.isArray(result) ? result.map(emp => {
         const id = emp.id.toUpperCase();
@@ -37,9 +51,18 @@ const App = () => {
           approved: localStorage.getItem(`approved_${id}`) === 'true'
         };
       }) : [];
+      
       setData(normalizedData);
-    } catch (err) { setError(err.message); }
-    finally { setLoading(false); }
+      clearTimeout(timeoutId);
+    } catch (err) { 
+      if (err.name === 'AbortError') {
+        setError("Backend took too long to respond. It was likely sleeping. Please try again.");
+      } else {
+        setError(err.message); 
+      }
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   useEffect(() => { fetchData(); }, [startDate]);
@@ -97,6 +120,7 @@ const App = () => {
       `}</style>
 
       <div className="max-w-[1900px] mx-auto">
+        {/* Top Header */}
         <div className="flex justify-between items-center mb-4 bg-white p-3 rounded-2xl shadow-sm border border-slate-200">
           <div className="flex items-center gap-4">
             <div className="bg-slate-900 p-2.5 rounded-xl text-white"><Activity size={18} /></div>
@@ -105,6 +129,7 @@ const App = () => {
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1 block">{APP_VERSION}</span>
             </div>
             <div className="h-8 w-[1px] bg-slate-200 mx-2" />
+            
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
               <button onClick={() => shiftDate(-14)} className="p-1.5 hover:bg-white rounded-lg transition-all"><ChevronLeft size={16}/></button>
               <div className="px-4 py-1 font-black text-slate-700 min-w-[140px] text-center flex items-center gap-2">
@@ -112,26 +137,46 @@ const App = () => {
               </div>
               <button onClick={() => shiftDate(14)} className="p-1.5 hover:bg-white rounded-lg transition-all"><ChevronRight size={16}/></button>
             </div>
-            <button onClick={() => setStartDate(getCurrentAroiMonday())} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl font-black uppercase text-[9px] hover:bg-slate-50 transition-all text-slate-600 shadow-sm"><Target size={14} className="text-blue-500" /> Today</button>
+            
+            <button onClick={() => setStartDate(getCurrentAroiMonday())} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl font-black uppercase text-[9px] hover:bg-slate-50 transition-all text-slate-600 shadow-sm">
+                <Target size={14} className="text-blue-500" /> Today
+            </button>
           </div>
 
-          <button onClick={async () => {
-            setIsSyncing(true);
-            try {
-              const res = await fetch(`${API_URL}/api/sync`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, startDate }) });
-              if (res.ok) setLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-            } finally { setIsSyncing(false); }
-          }} disabled={isSyncing} className={`flex items-center gap-2 px-8 py-2.5 rounded-xl font-black uppercase transition-all shadow-md ${isSyncing ? 'bg-slate-100 text-slate-300' : 'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95'}`}>
-            {isSyncing ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} <span>{isSyncing ? 'Syncing...' : 'Save Sync'}</span>
-          </button>
+          <div className="flex items-center gap-3">
+            {error && (
+                <div className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-xl border border-red-100 animate-pulse">
+                    <AlertTriangle size={14} />
+                    <span className="font-bold text-[10px] uppercase">{error}</span>
+                    <button onClick={fetchData} className="ml-2 bg-red-600 text-white p-1 rounded-md"><RefreshCw size={10}/></button>
+                </div>
+            )}
+            
+            <button onClick={async () => {
+                setIsSyncing(true);
+                try {
+                const res = await fetch(`${API_URL}/api/sync`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, startDate }) });
+                if (res.ok) setLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+                } finally { setIsSyncing(false); }
+            }} disabled={isSyncing || loading} className={`flex items-center gap-2 px-8 py-2.5 rounded-xl font-black uppercase transition-all shadow-md ${isSyncing ? 'bg-slate-100 text-slate-300' : 'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95'}`}>
+                {isSyncing ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} 
+                <span>{isSyncing ? 'Syncing...' : 'Save Sync'}</span>
+            </button>
+          </div>
         </div>
 
         <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden relative">
           {loading && (
-            <div className="absolute inset-0 z-[100] bg-white/60 backdrop-blur-[2px] flex items-center justify-center">
-              <div className="bg-white px-6 py-4 rounded-2xl shadow-2xl border border-slate-100 flex items-center gap-4">
-                <Loader2 className="animate-spin text-emerald-600" size={24} />
-                <span className="font-black text-slate-900 uppercase tracking-widest text-[10px]">Updating Grid...</span>
+            <div className="absolute inset-0 z-[100] bg-white/60 backdrop-blur-[2px] flex flex-col items-center justify-center">
+              <div className="bg-white px-8 py-6 rounded-3xl shadow-2xl border border-slate-100 flex flex-col items-center gap-4">
+                <div className="relative">
+                    <Loader2 className="animate-spin text-emerald-600" size={32} />
+                    <div className="absolute inset-0 animate-ping bg-emerald-400/20 rounded-full"></div>
+                </div>
+                <div className="text-center">
+                    <span className="font-black text-slate-900 uppercase tracking-[0.2em] text-[11px] block">Waking up Engine</span>
+                    <span className="text-[9px] text-slate-400 font-medium uppercase mt-1 block tracking-wider">Usually takes 40-50s on Free Tier</span>
+                </div>
               </div>
             </div>
           )}
@@ -140,14 +185,14 @@ const App = () => {
             <table className="w-full text-left border-collapse table-fixed min-w-[1800px]">
               <thead className="sticky top-0 z-40 bg-slate-900 text-[10px] uppercase font-bold text-white">
                 <tr className="divide-x divide-slate-800">
-                  <th className="w-52 p-4 sticky left-0 z-50 bg-slate-950 shadow-xl">Team Member</th>
+                  <th className="w-52 p-4 sticky left-0 z-50 bg-slate-950 shadow-xl border-r border-slate-800">Team Member</th>
                   {Array.from({ length: 14 }).map((_, i) => (
                     <React.Fragment key={i}>
                       <th className={`w-[62px] p-2 text-center ${i % 7 >= 5 ? 'bg-orange-900/20 text-orange-400' : ''}`}>
                         <div className="text-[8px] opacity-40 mb-0.5">{allDates[i]}</div>
                         {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][i % 7]}
                       </th>
-                      {(i === 6 || i === 13) && <th className="w-20 p-2 text-center bg-emerald-950/50 text-emerald-400">Extra $</th>}
+                      {(i === 6 || i === 13) && <th className="w-20 p-2 text-center bg-emerald-950/50 text-emerald-400 border-x border-emerald-900/50">Extra $</th>}
                     </React.Fragment>
                   ))}
                   <th className="w-20 p-2 text-center bg-slate-950 text-slate-400">Wkday</th>
@@ -158,41 +203,24 @@ const App = () => {
               </thead>
 
               <tbody className="divide-y divide-slate-100">
-                {data.map((emp) => {
+                {data.length > 0 ? data.map((emp) => {
                   const b = calculateBreakdown(emp);
                   const isHidden = hiddenStaff.has(emp.id) && !emp.approved;
 
                   return (
-                    <tr key={emp.id} className={`group divide-x divide-slate-50 transition-all ${emp.approved ? 'bg-amber-50/40' : isHidden ? 'row-hidden' : 'hover:bg-slate-50/50'}`}>
+                    <tr key={emp.id} className={`group divide-x divide-slate-50 transition-all ${emp.approved ? 'bg-amber-50/40' : isHidden ? 'row-hidden opacity-50' : 'hover:bg-slate-50/50'}`}>
                       <td className="p-3 sticky left-0 z-20 bg-white border-r border-slate-200 group-hover:bg-slate-50 overflow-hidden">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-3 overflow-hidden">
+                        <div className="flex items-center gap-3">
                             {emp.approved ? (
                                 <div className="text-amber-500 bg-amber-100 p-1.5 rounded-lg">
                                     <Lock size={14} fill="currentColor" />
                                 </div>
                             ) : isHidden ? (
-                                <button 
-                                    onClick={() => setHiddenStaff(p => { const n = new Set(p); n.delete(emp.id); return n; })}
-                                    className="w-full text-center py-0.5 text-[8px] font-black text-emerald-600 bg-emerald-50 rounded-md uppercase tracking-widest hover:bg-emerald-100"
-                                >
-                                    Show
-                                </button>
+                                <button onClick={() => setHiddenStaff(p => { const n = new Set(p); n.delete(emp.id); return n; })} className="w-full text-center py-0.5 text-[8px] font-black text-emerald-600 bg-emerald-50 rounded-md uppercase hover:bg-emerald-100">Show</button>
                             ) : (
-                                <button 
-                                    onClick={() => setHiddenStaff(p => { const n = new Set(p); n.add(emp.id); return n; })}
-                                    className="text-slate-300 hover:text-slate-500 transition-colors"
-                                >
-                                    <EyeOff size={14}/>
-                                </button>
+                                <button onClick={() => setHiddenStaff(p => { const n = new Set(p); n.add(emp.id); return n; })} className="text-slate-300 hover:text-slate-500 transition-colors"><EyeOff size={14}/></button>
                             )}
-                            
-                            {!isHidden && (
-                                <span className={`font-bold uppercase tracking-tighter truncate text-[11px] ${emp.approved ? 'text-amber-700' : 'text-slate-700'}`}>
-                                    {emp.name}
-                                </span>
-                            )}
-                          </div>
+                            {!isHidden && <span className={`font-bold uppercase tracking-tighter truncate text-[11px] ${emp.approved ? 'text-amber-700' : 'text-slate-700'}`}>{emp.name}</span>}
                         </div>
                       </td>
                       
@@ -201,20 +229,17 @@ const App = () => {
                         return (
                           <React.Fragment key={idx}>
                             <td className={`p-1 ${idx % 7 >= 5 ? 'bg-orange-50/30' : ''}`}>
-                              <div className={`p-1 rounded-lg border flex flex-col items-center transition-colors ${emp.approved ? 'border-amber-100 bg-amber-50/20' : isMismatch ? 'bg-red-50 border-red-100' : day.s > 0 ? 'bg-emerald-50 border-emerald-100' : 'border-transparent'}`}>
+                              <div className={`p-1 rounded-lg border flex flex-col items-center transition-colors ${emp.approved ? 'border-amber-100 bg-amber-50/20' : isMismatch ? 'bg-red-50 border-red-100 shadow-sm' : day.s > 0 ? 'bg-emerald-50 border-emerald-100' : 'border-transparent'}`}>
                                 <span className={`text-[8px] font-bold mb-0.5 ${emp.approved ? 'text-amber-500' : isMismatch ? 'text-red-400' : day.s > 0 ? 'text-emerald-500' : 'text-slate-200'}`}>{day.s > 0 ? day.s.toFixed(1) : '—'}</span>
                                 <input type="number" value={day.r || ''} disabled={emp.approved} onChange={(e) => {
                                   const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
                                   setData(p => p.map(ev => ev.id === emp.id ? {...ev, daily: ev.daily.map((d, i) => i === idx ? {...d, r: val} : d)} : ev));
-                                }} className={`w-full text-center text-[11px] font-black rounded font-mono transition-all ${emp.approved ? 'bg-transparent text-amber-600 border-none' : 'bg-white border border-slate-200 text-slate-900 shadow-sm'}`} />
+                                }} className={`w-full text-center text-[11px] font-black rounded font-mono transition-all ${emp.approved ? 'bg-transparent text-amber-600 border-none' : 'bg-white border border-slate-200 text-slate-900 shadow-sm focus:ring-2 focus:ring-emerald-500 outline-none'}`} />
                               </div>
                             </td>
                             {(idx === 6 || idx === 13) && (
                                 <td className={`p-2 text-center ${emp.approved ? 'bg-amber-100/20' : 'bg-emerald-50/10'}`}>
-                                    <input 
-                                        type="number" 
-                                        value={emp.extra?.[idx === 6 ? 0 : 1] || ''} 
-                                        disabled={emp.approved} 
+                                    <input type="number" value={emp.extra?.[idx === 6 ? 0 : 1] || ''} disabled={emp.approved} 
                                         onChange={(e) => {
                                             const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
                                             setData(p => p.map(ev => ev.id === emp.id ? {...ev, extra: idx === 6 ? [val, ev.extra[1]] : [ev.extra[0], val]} : ev));
@@ -233,10 +258,7 @@ const App = () => {
                           <td className={`p-2 text-center font-bold font-mono ${emp.approved ? 'text-amber-700' : 'text-orange-600'}`}>{b.weekend}</td>
                           <td className={`p-2 text-center font-black text-[13px] font-mono ${emp.approved ? 'bg-amber-100 text-amber-900' : 'bg-emerald-50 text-emerald-900'}`}>{b.total}</td>
                           <td className="p-2 text-center">
-                            <button 
-                                onClick={() => toggleApprove(emp.id)} 
-                                className={`w-full py-1.5 rounded flex items-center justify-center gap-1.5 transition-all border font-black uppercase text-[9px] ${emp.approved ? 'bg-amber-600 border-amber-700 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}
-                            >
+                            <button onClick={() => toggleApprove(emp.id)} className={`w-full py-1.5 rounded flex items-center justify-center gap-1.5 transition-all border font-black uppercase text-[9px] ${emp.approved ? 'bg-amber-600 border-amber-700 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}>
                               {emp.approved ? <Unlock size={12} /> : <Lock size={12}/>} 
                               {emp.approved ? 'Unlock' : 'Approve'}
                             </button>
@@ -245,7 +267,17 @@ const App = () => {
                       )}
                     </tr>
                   );
-                })}
+                }) : !loading && (
+                    <tr>
+                        <td colSpan={30} className="p-20 text-center">
+                            <div className="flex flex-col items-center gap-4 text-slate-300">
+                                <Calendar size={48} className="opacity-20" />
+                                <span className="font-black uppercase tracking-widest text-xs">No payroll data found for this window</span>
+                                <button onClick={fetchData} className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase">Force Refresh</button>
+                            </div>
+                        </td>
+                    </tr>
+                )}
               </tbody>
             </table>
           </div>
