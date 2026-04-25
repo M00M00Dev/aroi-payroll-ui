@@ -58,8 +58,8 @@ const App = () => {
     const we = emp.daily.reduce((acc, d, i) => (i % 7 >= 5) ? acc + (Number(d.r) || 0) : acc, 0);
     const ex = (emp.extra || [0, 0]).reduce((acc, val) => acc + (Number(val) || 0), 0);
     
-    const rWd = emp.rate_weekday || rates[emp.id]?.wd || 0;
-    const rWe = emp.rate_weekend || rates[emp.id]?.we || 0;
+    const rWd = Number(emp.rate_weekday || rates[emp.id]?.wd || 0);
+    const rWe = Number(emp.rate_weekend || rates[emp.id]?.we || 0);
     
     return { 
       weekday: wd.toFixed(1), weekend: we.toFixed(1), total: (wd + we).toFixed(1), 
@@ -185,15 +185,18 @@ const App = () => {
                                     <tr key={emp.id} className="text-xs font-bold text-slate-700 hover:bg-slate-50/50 transition-colors">
                                         <td className="py-4 uppercase tracking-tighter">{emp.name}</td>
                                         
-                                        {/* WEEKDAY RATE - $XX.XX FORMAT */}
+                                        {/* WEEKDAY RATE - FORCED $XX.00 VIEW */}
                                         <td className="py-2 text-center">
                                           <div className="flex items-center justify-center font-mono text-[11px]">
                                             <span className="text-slate-400 mr-0.5">$</span>
                                             <input 
                                               type="number" 
                                               step="0.01"
-                                              value={b.rWd || ''} 
-                                              placeholder="0.00" 
+                                              /* This is the fix: convert to fixed string for display, but keep as number for the state */
+                                              onBlur={(e) => {
+                                                  if (e.target.value) e.target.value = parseFloat(e.target.value).toFixed(2);
+                                              }}
+                                              defaultValue={parseFloat(b.rWd).toFixed(2)}
                                               onChange={(e) => setRates(p => ({...p, [emp.id]: {...(p[emp.id] || {}), wd: parseFloat(e.target.value) || 0}}))} 
                                               className="w-16 bg-transparent border-none outline-none text-center font-black no-print" 
                                             />
@@ -201,15 +204,17 @@ const App = () => {
                                           </div>
                                         </td>
 
-                                        {/* WEEKEND RATE - $XX.XX FORMAT */}
+                                        {/* WEEKEND RATE - FORCED $XX.00 VIEW */}
                                         <td className="py-2 text-center">
                                           <div className="flex items-center justify-center font-mono text-[11px] text-orange-600">
                                             <span className="text-orange-300 mr-0.5">$</span>
                                             <input 
                                               type="number" 
                                               step="0.01"
-                                              value={b.rWe || ''} 
-                                              placeholder="0.00" 
+                                              onBlur={(e) => {
+                                                  if (e.target.value) e.target.value = parseFloat(e.target.value).toFixed(2);
+                                              }}
+                                              defaultValue={parseFloat(b.rWe).toFixed(2)}
                                               onChange={(e) => setRates(p => ({...p, [emp.id]: {...(p[emp.id] || {}), we: parseFloat(e.target.value) || 0}}))} 
                                               className="w-16 bg-transparent border-none outline-none text-center font-black no-print" 
                                             />
