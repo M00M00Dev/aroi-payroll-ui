@@ -182,43 +182,45 @@ const App = () => {
                             {data.filter(e => !hiddenStaff.has(e.id)).map(emp => {
                                 const b = calculateBreakdown(emp);
                                 return (
-                                    <tr key={emp.id} className="text-xs font-bold text-slate-700">
+                                    <tr key={emp.id} className="text-xs font-bold text-slate-700 hover:bg-slate-50/50 transition-colors">
                                         <td className="py-4 uppercase tracking-tighter">{emp.name}</td>
                                         
-                                        {/* WEEKDAY RATE - CLEAN STYLE */}
+                                        {/* WEEKDAY RATE - $XX.XX FORMAT */}
                                         <td className="py-2 text-center">
                                           <div className="flex items-center justify-center font-mono text-[11px]">
                                             <span className="text-slate-400 mr-0.5">$</span>
                                             <input 
                                               type="number" 
+                                              step="0.01"
                                               value={b.rWd || ''} 
                                               placeholder="0.00" 
                                               onChange={(e) => setRates(p => ({...p, [emp.id]: {...(p[emp.id] || {}), wd: parseFloat(e.target.value) || 0}}))} 
-                                              className="w-14 bg-transparent outline-none text-center font-black no-print" 
+                                              className="w-16 bg-transparent border-none outline-none text-center font-black no-print" 
                                             />
                                             <span className="hidden print:inline">{parseFloat(b.rWd).toFixed(2)}</span>
                                           </div>
                                         </td>
 
-                                        {/* WEEKEND RATE - CLEAN STYLE */}
+                                        {/* WEEKEND RATE - $XX.XX FORMAT */}
                                         <td className="py-2 text-center">
                                           <div className="flex items-center justify-center font-mono text-[11px] text-orange-600">
                                             <span className="text-orange-300 mr-0.5">$</span>
                                             <input 
                                               type="number" 
+                                              step="0.01"
                                               value={b.rWe || ''} 
                                               placeholder="0.00" 
                                               onChange={(e) => setRates(p => ({...p, [emp.id]: {...(p[emp.id] || {}), we: parseFloat(e.target.value) || 0}}))} 
-                                              className="w-14 bg-transparent outline-none text-center font-black no-print" 
+                                              className="w-16 bg-transparent border-none outline-none text-center font-black no-print" 
                                             />
-                                            <span className="hidden print:inline">{parseFloat(b.rWe).toFixed(2)}</span>
+                                            <span className="hidden print:inline text-orange-600">{parseFloat(b.rWe).toFixed(2)}</span>
                                           </div>
                                         </td>
 
                                         <td className="py-4 text-center font-mono text-slate-400">{b.weekday}</td>
                                         <td className="py-4 text-center font-mono text-orange-600">{b.weekend}</td>
-                                        <td className="py-4 text-center font-mono text-emerald-600">${b.extra}</td>
-                                        <td className="py-4 text-right font-black text-slate-900">${b.amount}</td>
+                                        <td className="py-4 text-center font-mono text-emerald-600">${parseFloat(b.extra).toFixed(2)}</td>
+                                        <td className="py-4 text-right font-black text-slate-900">${parseFloat(b.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     </tr>
                                 );
                             })}
