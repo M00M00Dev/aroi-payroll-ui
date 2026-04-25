@@ -8,7 +8,7 @@ const App = () => {
     return `${now.getFullYear().toString().slice(-2)}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}.${now.getHours()}${now.getMinutes()}`;
   }, []);
 
-  const API_URL = import.meta.env.VITE_API_URL || "https://aroi-payroll-backend.onrender.com";
+  const API_URL = import.meta.env.VITE_API_URL || "https://aroi-payroll-backend-production.up.railway.app";
 
   // --- ISO MONDAY LOGIC ---
   const getCurrentAroiMonday = () => {
@@ -58,7 +58,6 @@ const App = () => {
     const we = emp.daily.reduce((acc, d, i) => (i % 7 >= 5) ? acc + (Number(d.r) || 0) : acc, 0);
     const ex = (emp.extra || [0, 0]).reduce((acc, val) => acc + (Number(val) || 0), 0);
     
-    // PRIORITY: Google Sheet Rate -> Local Manual Override -> 0
     const rWd = emp.rate_weekday || rates[emp.id]?.wd || 0;
     const rWe = emp.rate_weekend || rates[emp.id]?.we || 0;
     
@@ -185,15 +184,51 @@ const App = () => {
                                 return (
                                     <tr key={emp.id} className="text-xs font-bold text-slate-700">
                                         <td className="py-4 uppercase tracking-tighter">{emp.name}</td>
-                                        <td className="py-2 text-center"><input type="number" value={b.rWd || ''} placeholder="0" onChange={(e) => setRates(p => ({...p, [emp.id]: {...(p[emp.id] || {}), wd: parseFloat(e.target.value) || 0}}))} className="w-12 text-center border rounded p-1 font-mono text-[10px] no-print" /><span className="hidden print:inline">{b.rWd}</span></td>
-                                        <td className="py-2 text-center"><input type="number" value={b.rWe || ''} placeholder="0" onChange={(e) => setRates(p => ({...p, [emp.id]: {...(p[emp.id] || {}), we: parseFloat(e.target.value) || 0}}))} className="w-12 text-center border rounded p-1 font-mono text-orange-600 text-[10px] no-print" /><span className="hidden print:inline text-orange-600">{b.rWe}</span></td>
-                                        <td className="py-4 text-center font-mono text-slate-400">{b.weekday}</td><td className="py-4 text-center font-mono text-orange-600">{b.weekend}</td><td className="py-4 text-center font-mono text-emerald-600">${b.extra}</td><td className="py-4 text-right font-black text-slate-900">${b.amount}</td>
+                                        
+                                        {/* WEEKDAY RATE - CLEAN STYLE */}
+                                        <td className="py-2 text-center">
+                                          <div className="flex items-center justify-center font-mono text-[11px]">
+                                            <span className="text-slate-400 mr-0.5">$</span>
+                                            <input 
+                                              type="number" 
+                                              value={b.rWd || ''} 
+                                              placeholder="0.00" 
+                                              onChange={(e) => setRates(p => ({...p, [emp.id]: {...(p[emp.id] || {}), wd: parseFloat(e.target.value) || 0}}))} 
+                                              className="w-14 bg-transparent outline-none text-center font-black no-print" 
+                                            />
+                                            <span className="hidden print:inline">{parseFloat(b.rWd).toFixed(2)}</span>
+                                          </div>
+                                        </td>
+
+                                        {/* WEEKEND RATE - CLEAN STYLE */}
+                                        <td className="py-2 text-center">
+                                          <div className="flex items-center justify-center font-mono text-[11px] text-orange-600">
+                                            <span className="text-orange-300 mr-0.5">$</span>
+                                            <input 
+                                              type="number" 
+                                              value={b.rWe || ''} 
+                                              placeholder="0.00" 
+                                              onChange={(e) => setRates(p => ({...p, [emp.id]: {...(p[emp.id] || {}), we: parseFloat(e.target.value) || 0}}))} 
+                                              className="w-14 bg-transparent outline-none text-center font-black no-print" 
+                                            />
+                                            <span className="hidden print:inline">{parseFloat(b.rWe).toFixed(2)}</span>
+                                          </div>
+                                        </td>
+
+                                        <td className="py-4 text-center font-mono text-slate-400">{b.weekday}</td>
+                                        <td className="py-4 text-center font-mono text-orange-600">{b.weekend}</td>
+                                        <td className="py-4 text-center font-mono text-emerald-600">${b.extra}</td>
+                                        <td className="py-4 text-right font-black text-slate-900">${b.amount}</td>
                                     </tr>
                                 );
                             })}
                         </tbody>
                         <tfoot>
-                            <tr className="border-t-2 border-slate-900 bg-slate-900 text-white font-black"><td className="py-4 px-4 uppercase text-[10px]">Total</td><td colSpan={5}></td><td className="py-4 px-4 text-right text-lg font-mono">${data.reduce((acc, e) => acc + parseFloat(calculateBreakdown(e).amount), 0).toFixed(2)}</td></tr>
+                            <tr className="border-t-2 border-slate-900 bg-slate-900 text-white font-black">
+                              <td className="py-4 px-4 uppercase text-[10px]">Total</td>
+                              <td colSpan={5}></td>
+                              <td className="py-4 px-4 text-right text-lg font-mono">${data.reduce((acc, e) => acc + parseFloat(calculateBreakdown(e).amount), 0).toFixed(2)}</td>
+                            </tr>
                         </tfoot>
                     </table>
                 </div>
